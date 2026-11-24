@@ -95,6 +95,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .btn.ghost{border-color:var(--line)}
 .btn.danger{border-color:var(--bad);color:var(--bad)}
 .btn.sm{padding:5px 12px;min-height:34px;font-size:14px}
+.actions .btn.uni{min-width:170px;text-align:center}
 .link{background:none;border:0;color:var(--ink);font:600 15px var(--f-body);cursor:pointer;padding:6px 0;text-decoration:underline;text-underline-offset:3px}
 .big{display:flex;flex-direction:column;gap:6px;text-align:left;width:100%;padding:26px 24px 28px;border-radius:6px;border:3px solid var(--ink);cursor:pointer;color:var(--ink);background:var(--surface);min-width:0}
 .big b{font-family:var(--f-display);font-size:44px;font-weight:800;line-height:1;text-transform:uppercase;letter-spacing:.02em}
@@ -104,6 +105,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .big:hover{transform:translateY(-1px)}
 .stack{display:flex;flex-direction:column;gap:14px}
 .homeLayout{display:grid;grid-template-columns:190px minmax(0,1fr);gap:24px;align-items:start}
+.freeze{position:sticky;top:calc(env(safe-area-inset-top,0px) + var(--hdrh,64px));z-index:4;background:var(--bg);padding:4px 0 2px;box-shadow:0 6px 6px -6px rgba(0,0,0,.35)}.freeze.nofreeze{position:static;box-shadow:none}
 .sidecol{display:flex;flex-direction:column;gap:18px;position:sticky;top:12px}
 .sidenav{display:flex;flex-direction:column;gap:10px;align-items:flex-start;padding-bottom:14px;border-bottom:2px solid var(--line)}
 .sidenav a{color:var(--ink)}
@@ -390,6 +392,95 @@ html .eqpics figcaption{font-size:12px;color:var(--muted);margin-top:4px}
   <div class="hint" style="padding:6px 12px">If the PDF does not show here, use Open in new tab or Download.</div>
 </div></dialog>
 
+<script>
+/* ---------- Sign-in and access levels (Viewer / Operator / Admin) ---------- */
+const AUTH=(function(){
+  const RANK={viewer:1,operator:2,admin:3},LABEL={viewer:'Viewer',operator:'Operator',admin:'Admin'};
+  const VIEW_ACTS=new Set('home go list open filter due tickets tkt skids storage sales salestab mrs mrtab pers persopen perscerts certs certview certdl certzip fo focertview laing laingpdf pdfview pdfdl mrpdf mrpdfdl mrrecview mrrecpdf plopen plpdf histview histpdf histdoc frview frpdf frdoc frback print printjc printmr osprint pcertpdf csv csvdown csvcerts fsconnect fsreconnect soon mssignin mssignout msload fsload'.split(' '));
+  const OPER_ACTS=new Set('certadd certedit certnew pcadd pcertadd persadd pladd foadd fosaveprint osedit mredit mropen mrrecall mrrecsave tsadd tsdel wladd wlrm recadd recdel downnew downedit restart saveone jclfill jclnow jclpick frclose projcloseok projcloseno pledit plesave plereset plenew plenewrm plehide plerestore projopen projclose salemore salesgo'.split(' '));
+  const VIEWER_NO_VIEWS=new Set(['add','edit','added','status','demob','skidform','install','down','restart','ticketnew','fredit','foform','sell','histedit','histall','perscert']);
+  const OPER_NO_VIEWS=new Set(['histedit','histall']);
+  /* Default sign-ins. Admin changes these under Account. */
+  const DEFAULTS=[['Admin','admin','1068'],['Operator','operator','2468'],['Viewer','viewer','1357']];
+  const hash=(n,p)=>{const s='laing|'+String(n).trim().toLowerCase()+'|'+p;let h1=0xdeadbeef,h2=0x41c6ce57;for(let i=0;i<s.length;i++){const c=s.charCodeAt(i);h1=Math.imul(h1^c,2654435761);h2=Math.imul(h2^c,1597334677)}h1=Math.imul(h1^(h1>>>16),2246822507)^Math.imul(h2^(h2>>>13),3266489909);h2=Math.imul(h2^(h2>>>16),2246822507)^Math.imul(h1^(h1>>>13),3266489909);return (4294967296*(2097151&h2)+(h1>>>0)).toString(36)};
+  let users=null,cur=null,fails=0,lockUntil=0;
+  const lsg=k=>{try{return localStorage.getItem(k)}catch(e){return null}},lss=(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}};
+  const ssg=k=>{try{return sessionStorage.getItem(k)}catch(e){return null}},sss=(k,v)=>{try{v==null?sessionStorage.removeItem(k):sessionStorage.setItem(k,v)}catch(e){}};
+  const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  function load(){if(users)return users;try{const a=JSON.parse(lsg('rytUsers')||'null');if(Array.isArray(a)&&a.some(u=>u.r==='admin'))users=a}catch(e){}if(!users)users=DEFAULTS.map(d=>({n:d[0],r:d[1],h:hash(d[0],d[2])}));return users}
+  const UF='rental-yard-users.json';let uAt=lsg('rytUsersAt')||'',synced=false;
+  const payload=()=>JSON.stringify({app:'rental-yard-users',updatedAt:uAt,users:users});
+  function save(){uAt=new Date().toISOString();lss('rytUsersAt',uAt);lss('rytUsers',JSON.stringify(users));push()}
+  /* Shared user list: kept beside the tracker data in OneDrive (web page) and in the connected folder, so every device has the same sign-ins. */
+  async function readShared(){const out=[];
+    try{if(typeof MS!=='undefined'&&MS.ok&&msSigned()){const d=await msGetJson([UF]);out.push({src:'ms',d})}}catch(e){}
+    try{if(typeof FS!=='undefined'&&FS.dir&&FS.ok){let d=null;try{const fh=await FS.dir.getFileHandle(UF);d=JSON.parse(await (await fh.getFile()).text())}catch(e){if(!e||e.name!=='NotFoundError')throw e}out.push({src:'fs',d})}}catch(e){}
+    return out}
+  async function push(){if(role()!=='admin')return;const j=payload();
+    try{if(typeof MS!=='undefined'&&MS.ok&&msSigned())await msPut([UF],j,'application/json')}catch(e){}
+    try{if(typeof FS!=='undefined'&&FS.dir&&FS.ok)await fsWrite(FS.dir,UF,j)}catch(e){}}
+  async function pull(){const r=await readShared();if(!r.length)return;synced=true;
+    const valid=r.filter(x=>x.d&&x.d.app==='rental-yard-users'&&Array.isArray(x.d.users)&&x.d.users.some(u=>u.r==='admin')&&x.d.updatedAt);
+    valid.sort((a,b)=>a.d.updatedAt<b.d.updatedAt?1:-1);const best=valid[0];
+    if(best&&best.d.updatedAt>uAt){users=best.d.users;uAt=best.d.updatedAt;lss('rytUsers',JSON.stringify(users));lss('rytUsersAt',uAt);revalidate();const ov=document.getElementById('authov');if(ov){ov.remove();showLogin()}}
+    else if((!best||best.d.updatedAt<uAt)&&role()==='admin'&&uAt)push()}
+  function revalidate(){if(!cur)return;let s=null;try{s=JSON.parse(ssg('rytSess')||'null')}catch(e){}const u=find(cur.n);
+    if(!u||!s||u.h!==s.h){toast('Your sign-in was changed. Please sign in again.');signOut()}else if(u.r!==cur.r){cur.r=u.r;try{render()}catch(e){}}}
+  (function tick(){setTimeout(()=>{pull().catch(()=>{}).then(tick)},synced?60000:8000)})();
+  const find=n=>load().find(u=>u.n.toLowerCase()===String(n).trim().toLowerCase());
+  const role=()=>cur?cur.r:'';
+  const rank=()=>RANK[role()]||0;
+  function allowView(n,o){o=o||{};if(!cur)return false;const r=role();if(r==='admin')return true;
+    if(VIEWER_NO_VIEWS.has(n)&&r==='viewer')return false;
+    if(OPER_NO_VIEWS.has(n)&&r!=='admin')return false;
+    if(r==='viewer'){if(n==='mr'&&o.tab==='add')return false;if(n==='sales'&&['rent','sell','saleedit','projedit'].includes(o.tab))return false;if(n==='persform'&&!o.id)return false}
+    return true}
+  function allowAct(a,b){if(!cur)return false;const r=role();if(r==='admin')return true;const d=(b&&b.dataset)||{};
+    if(a==='go')return allowView(d.v,{id:d.id});
+    if(a==='salestab')return allowView('sales',{tab:d.id});
+    if(a==='mrtab')return allowView('mr',{tab:d.id});
+    if(VIEW_ACTS.has(a))return true;
+    return r==='operator'&&OPER_ACTS.has(a)}
+  function style(){if(document.getElementById('authcss'))return;const s=document.createElement('style');s.id='authcss';s.textContent='#authov{position:fixed;inset:0;z-index:99999;background:var(--bg,#EDEFF1);display:flex;align-items:center;justify-content:center;padding:16px}#authov .card,.authdlg{background:var(--surface,#fff);color:var(--ink,#11181F);border:1px solid var(--line,#D3D8DD);border-radius:12px;padding:22px;box-sizing:border-box}#authov .card{width:100%;max-width:360px}#authov h2{margin:0 0 4px;font-size:22px}#authov label,.authdlg label{display:block;font-size:13px;margin:12px 0 4px;color:var(--muted,#56616D)}#authov input,#authov select,.authdlg input,.authdlg select{width:100%;box-sizing:border-box;font-size:17px;padding:10px;border:1px solid var(--line,#D3D8DD);border-radius:8px;background:var(--surface,#fff);color:var(--ink,#11181F)}#authov button.go,.authdlg button.go{margin-top:16px;width:100%;font-size:16px;font-weight:700;padding:12px;border:0;border-radius:8px;background:var(--accent,#FFC72C);color:var(--on-accent,#11181F);cursor:pointer}.authdlg{max-width:520px;width:94%}.authdlg table{width:100%;border-collapse:collapse;margin-top:8px;font-size:14px}.authdlg td,.authdlg th{padding:6px 4px;border-bottom:1px solid var(--line,#D3D8DD);text-align:left}.authdlg td button{font-size:13px;padding:4px 8px;margin-right:4px;cursor:pointer}.authdlg .row{display:flex;gap:8px}.authdlg .row>*{flex:1}#autherr,.authdlg .err{color:#b3261e;font-size:14px;min-height:18px;margin-top:8px}.authdlg .ok{color:#1b7a3a;font-size:14px;margin-top:8px}.authdlg h3{margin:18px 0 0;font-size:16px}.authbtn{white-space:nowrap}'; document.head.appendChild(s)}
+  function showLogin(){style();let ov=document.getElementById('authov');if(ov)return;ov=document.createElement('div');ov.id='authov';
+    ov.innerHTML='<form class="card" autocomplete="off"><h2>Sign in</h2><div style="color:var(--muted,#56616D);font-size:14px">Laing Rental Equipment Tracker</div><label for="authu">User</label><select id="authu">'+load().map(u=>'<option>'+esc(u.n)+'</option>').join('')+'</select><label for="authp">PIN</label><input id="authp" type="password" inputmode="numeric" autocomplete="off"><div id="autherr" role="alert"></div><button class="go" type="submit">Sign in</button><div style="margin-top:10px;font-size:12px;color:var(--muted,#56616D);text-align:center">Version with sign-in · 23 Nov 2026</div></form>';
+    document.body.appendChild(ov);const last=ssg('rytLastUser')||lsg('rytLastUser');if(last&&find(last))ov.querySelector('#authu').value=find(last).n;
+    ov.querySelector('form').addEventListener('submit',ev=>{ev.preventDefault();const err=ov.querySelector('#autherr'),p=ov.querySelector('#authp');
+      if(Date.now()<lockUntil){err.textContent='Too many tries. Wait '+Math.ceil((lockUntil-Date.now())/1000)+' seconds.';return}
+      const u=find(ov.querySelector('#authu').value);if(u&&u.h===hash(u.n,p.value.trim())){fails=0;signIn(u)}else{fails++;if(fails>=5){lockUntil=Date.now()+30000;fails=0;err.textContent='Too many tries. Wait 30 seconds.'}else err.textContent='Wrong PIN.';p.value='';p.focus()}});
+    setTimeout(()=>ov.querySelector('#authp').focus(),50)}
+  function signIn(u){cur={n:u.n,r:u.r};sss('rytSess',JSON.stringify({n:u.n,h:u.h}));lss('rytLastUser',u.n);const ov=document.getElementById('authov');if(ov)ov.remove();if(typeof go==='function'){try{go('home')}catch(e){}}}
+  function signOut(){cur=null;sss('rytSess',null);try{render()}catch(e){}showLogin()}
+  function restore(){try{const s=JSON.parse(ssg('rytSess')||'null');if(s){const u=find(s.n);if(u&&u.h===s.h){cur={n:u.n,r:u.r};return true}}}catch(e){}return false}
+  function apply(){style();const d=document.documentElement;d.dataset.role=role();
+    if(!cur){showLogin();return}
+    if(!document.getElementById('acctbtn')){const t=document.getElementById('thbtn');if(t){const b=document.createElement('button');b.className=t.className+' authbtn';b.id='acctbtn';b.type='button';b.title='Account and PIN';t.parentNode.insertBefore(b,t);const o=document.createElement('button');o.className=t.className+' authbtn';o.id='outbtn';o.type='button';o.textContent='Sign out';t.parentNode.insertBefore(o,t)}}
+    const ab=document.getElementById('acctbtn');if(ab)ab.textContent=cur.n+' · '+LABEL[cur.r];
+    document.querySelectorAll('[data-act]').forEach(el=>{if(!allowAct(el.dataset.act,el)){el.style.display='none'}});
+    if(cur.r==='viewer'){document.querySelectorAll('#frm input,#frm select,#frm textarea').forEach(el=>{el.disabled=true});document.querySelectorAll('#frm button[type=submit],#frm button:not([type]),#frm input[type=file]').forEach(el=>{el.style.display='none'});
+      if(!document.getElementById('vbanner')){const m=document.getElementById('app');if(m&&document.getElementById('frm')){const x=document.createElement('div');x.id='vbanner';x.className='notice';x.textContent='View only. Your login cannot change records.';m.insertBefore(x,m.firstChild)}}}}
+  function dlg(html){style();const d=document.createElement('dialog');d.className='authdlg';d.innerHTML=html;document.body.appendChild(d);d.addEventListener('close',()=>d.remove());d.showModal();return d}
+  function account(){const adm=cur.r==='admin';
+    const d=dlg('<b style="font-size:18px">Account</b><div style="color:var(--muted,#56616D);font-size:14px">Signed in as '+esc(cur.n)+' ('+LABEL[cur.r]+')</div><h3>Change my PIN</h3><label>Current PIN</label><input id="ap0" type="password" inputmode="numeric"><div class="row"><div><label>New PIN (4+ digits)</label><input id="ap1" type="password" inputmode="numeric"></div><div><label>Repeat</label><input id="ap2" type="password" inputmode="numeric"></div></div><div class="err" id="apm"></div><button class="go" id="apsave" type="button">Save my PIN</button>'+(adm?'<h3>Users</h3><div id="ulist"></div><div class="row" style="margin-top:12px"><div><label>Name</label><input id="un"></div><div><label>Access</label><select id="ur"><option value="viewer">Viewer</option><option value="operator">Operator</option><option value="admin">Admin</option></select></div><div><label>PIN</label><input id="up" type="password" inputmode="numeric"></div></div><button class="go" id="uadd" type="button">Add user</button>':'')+'<button class="go" id="aclose" type="button" style="background:var(--line,#D3D8DD)">Close</button>');
+    const q=s=>d.querySelector(s),msg=(t,ok)=>{const m=q('#apm');m.className=ok?'ok':'err';m.textContent=t};
+    q('#aclose').onclick=()=>d.close();
+    q('#apsave').onclick=()=>{const u=find(cur.n);if(u.h!==hash(u.n,q('#ap0').value.trim()))return msg('Current PIN is wrong.');const p=q('#ap1').value.trim();if(!/^\d{4,12}$/.test(p))return msg('PIN must be 4 to 12 digits.');if(p!==q('#ap2').value.trim())return msg('The new PINs do not match.');u.h=hash(u.n,p);save();sss('rytSess',JSON.stringify({n:u.n,h:u.h}));['#ap0','#ap1','#ap2'].forEach(s=>q(s).value='');msg('PIN changed.',true)};
+    function list(){const L=q('#ulist');if(!L)return;L.innerHTML='<table><tr><th>User</th><th>Access</th><th></th></tr>'+load().map((u,i)=>'<tr><td>'+esc(u.n)+'</td><td><select data-i="'+i+'" class="rsel" style="font-size:14px;padding:4px"><option value="viewer"'+(u.r==='viewer'?' selected':'')+'>Viewer</option><option value="operator"'+(u.r==='operator'?' selected':'')+'>Operator</option><option value="admin"'+(u.r==='admin'?' selected':'')+'>Admin</option></select></td><td><button data-rp="'+i+'" type="button">Reset PIN</button><button data-rm="'+i+'" type="button">Remove</button></td></tr>').join('')+'</table>'}
+    list();
+    d.addEventListener('change',e=>{const s=e.target.closest('.rsel');if(!s)return;const u=users[+s.dataset.i];if(u.r==='admin'&&s.value!=='admin'&&users.filter(x=>x.r==='admin').length<2){s.value='admin';return msg('There must be at least one Admin.')}u.r=s.value;save();if(u.n===cur.n){cur.r=u.r;sss('rytSess',JSON.stringify({n:u.n,h:u.h}))}msg(u.n+' is now '+LABEL[u.r]+'.',true)});
+    d.addEventListener('click',e=>{const rp=e.target.dataset&&e.target.dataset.rp,rm=e.target.dataset&&e.target.dataset.rm;
+      if(rp!=null){const u=users[+rp],p=prompt('New PIN for '+u.n+' (4 to 12 digits)');if(p==null)return;if(!/^\d{4,12}$/.test(p.trim()))return msg('PIN must be 4 to 12 digits.');u.h=hash(u.n,p.trim());save();if(u.n===cur.n)sss('rytSess',JSON.stringify({n:u.n,h:u.h}));msg('PIN reset for '+u.n+'.',true)}
+      if(rm!=null){const u=users[+rm];if(u.n===cur.n)return msg('You cannot remove the user you are signed in as.');if(u.r==='admin'&&users.filter(x=>x.r==='admin').length<2)return msg('There must be at least one Admin.');if(!confirm('Remove '+u.n+'?'))return;users.splice(+rm,1);save();list();msg('Removed.',true)}});
+    const ua=q('#uadd');if(ua)ua.onclick=()=>{const n=q('#un').value.trim(),p=q('#up').value.trim();if(!n)return msg('Enter a name.');if(find(n))return msg('That name is already used.');if(!/^\d{4,12}$/.test(p))return msg('PIN must be 4 to 12 digits.');users.push({n,r:q('#ur').value,h:hash(n,p)});save();list();q('#un').value=q('#up').value='';msg('Added '+n+'.',true)}}
+  load();restore();
+  document.addEventListener('click',e=>{if(e.target.closest('#acctbtn'))account();else if(e.target.closest('#outbtn'))signOut()});
+  /* Viewers cannot attach files. */
+  document.addEventListener('change',e=>{if(cur&&cur.r==='viewer'&&e.target&&e.target.type==='file'){e.stopImmediatePropagation();e.target.value=''}},true);
+  document.addEventListener('DOMContentLoaded',()=>{if(!cur)showLogin()});
+  if(document.body&&!cur)showLogin();
+  return {can:k=>k==='write'?rank()>=2:k==='delete'?rank()>=3:false,isAdmin:()=>role()==='admin',role,user:()=>cur&&cur.n,allowView,allowAct,apply,signOut,showLogin};
+})();
+</script>
 <script>
 const $=s=>document.querySelector(s);
 const TYPES=[['Generators','GEN'],['Air Compressors','AC'],['Light Towers','LT'],['Fuel Tanks','DFT'],['Air Dryers','AD'],['Skid / CCU','CCU'],['Other','EQ']];
@@ -1278,6 +1369,7 @@ function syncRentalEntry(h,e){
   return h.map((y,j)=>j===last?{...y,d:e.dateOut,t:nt}:y).map((y,j)=>[y,j]).sort((a,b)=>(a[0].d||'').localeCompare(b[0].d||'')||a[1]-b[1]).map(y=>y[0]);
 }
 async function put(col,id,data){
+  if(!AUTH.can('write')){toast('Your login is view-only.');return false}
   if(col==='equipment'&&data&&data.history)data={...data,history:syncRentalEntry(data.history,data)};
   const prev=col==='equipment'?S.equipment.find(x=>x.id===id):null;
   if(db){try{await db.collection(col).doc(id).set(data)}catch(e){toast(e.code==='invalid_argument'?'You have view-only access to this tracker.':'Could not save. Try again.');return false}}
@@ -1289,6 +1381,7 @@ async function put(col,id,data){
   return true;
 }
 async function del(col,id){
+  if(!AUTH.can('delete')){toast('Only an Admin can delete.');return false}
   if(db){try{await db.collection(col).doc(id).delete()}catch(e){toast('Could not delete.');return false}}
   else{S[col]=S[col].filter(x=>x.id!==id);persist()}
   return true;
@@ -1495,7 +1588,7 @@ function detailSite(e){
     stats=`<dl class="facts" style="margin:0"><div><dt>Days on site</dt><dd>${onD}</dd></div><div><dt>Days running</dt><dd>${Math.max(0,onD-down)}</dd></div><div><dt>Days shut down</dt><dd>${down}</dd></div></dl>`;
   }
   return `<h2 style="font-size:24px">Site log</h2>
-  ${rented?`<div class="actions">${open?`<button class="btn pri" data-act="restart" data-id="${esc(open.id)}">Restart on site</button><button class="btn" data-act="fredit" data-id="${esc(open.id)}">Update failure report</button>`:`<button class="btn pri" data-act="downnew" data-id="${esc(e.id)}">Log shutdown</button>`}</div>`:''}
+  ${rented?`<div class="actions">${open?`<button class="btn pri" data-act="frview" data-id="${esc(open.id)}">Open failure report</button>`:`<button class="btn pri" data-act="downnew" data-id="${esc(e.id)}">Log shutdown</button>`}</div>`:''}
   ${stats}
   <div class="panel">${all.length?all.map(x=>`<button class="item" data-act="downedit" data-id="${esc(x.id)}"><span><b>${esc(x.reason)}</b><small>${fd(x.start)} to ${x.end?fd(x.end):'still shut down'} · ${dd(x)} d</small></span><span class="mid">${esc(x.party)}${x.project?' · '+esc(x.project):''}<small>${x.note?esc(x.note):''}${x.reportedBy?' · Reported by '+esc(x.reportedBy):''}${x.failureReason?' · Cause: '+esc(x.failureReason):''}${x.corrective?' · Fix: '+esc(x.corrective):''}${x.techAssigned?' · Technician: '+esc(x.techAssigned):''}${x.recommendation?' · Recommendation: '+esc(x.recommendation):''}</small></span><span class="chip ${x.end?'ok':'warn'}">${x.end?'Restarted':'Shut down'}</span></button>`).join(''):'<div class="empty">No shutdowns logged for this unit.</div>'}</div>`;
 }
@@ -1503,22 +1596,31 @@ function detailSite(e){
 const nextFr=()=>{const yy=today().slice(2,4),re=new RegExp('^FR'+yy+'-(\\d+)$');return 'FR'+yy+'-'+String(S.downtime.reduce((m,x)=>{const k=re.exec(String(x.frNo||''));return k?Math.max(m,+k[1]):m},0)+1).padStart(3,'0')};
 const frList=code=>S.downtime.filter(x=>x.frNo&&String(x.project||'').trim().toLowerCase()===String(code||'').trim().toLowerCase()).sort((a,b)=>String(b.frNo).localeCompare(String(a.frNo)));
 const recRow=(pf,i,v)=>`<div class="recrow" style="display:flex;gap:8px;align-items:center"><b class="recn" style="min-width:34px">#${i}</b><input type="text" name="${pf}rec_" value="${esc(v||'')}" maxlength="300" placeholder="Recommendation #${i}" autocomplete="off" style="flex:1"><button type="button" class="btn sm ghost" data-act="recdel" aria-label="Remove recommendation #${i}">✕</button></div>`;
-const frFieldsHtml=pf=>`${area(pf+'cause','1 · Reason for the failure','','required maxlength="400" placeholder="What caused the failure"')}
-    ${fld(pf+'parts','2 · Part/s that failed','text','','required maxlength="300" autocomplete="off" placeholder="e.g. Thermostat, radiator hose (type None if no part failed)"')}
+const whyRow=(pf,i,v,req)=>`<div class="whyrow" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><b style="min-width:34px">${i}.</b><input type="text" name="${pf}why_" value="${esc(v||'')}" maxlength="300" ${req?'required ':''}placeholder="Why ${i}: why it failed" autocomplete="off" style="flex:1;min-width:180px"><label class="btn sm ghost" style="cursor:pointer">+ Picture<input type="file" name="${pf}whyph${i}" accept="image/*" multiple hidden></label><span class="whyfn" style="font-size:12px"></span></div>`;
+function whyCollect(f,pf){
+  const whys=[],files=[];let err='';
+  [...f.querySelectorAll('input[name="'+pf+'why_"]')].forEach((inp,k)=>{
+    const t=inp.value.trim(),ph=f.querySelector('input[name="'+pf+'whyph'+(k+1)+'"]'),fl=ph&&ph.files?[...ph.files]:[];
+    if(t){whys.push(t);fl.forEach(file=>files.push({file,why:whys.length}))}
+    else if(fl.length&&!err)err='Enter the reason for Why '+(k+1)+' before adding its picture.';
+  });
+  return {whys,files,err};
+}
+const frFieldsHtml=pf=>`${fld(pf+'tech','1 · Technician assigned to repair','text','','required autocomplete="off" placeholder="Name of the technician"')}
+    <div class="f"><span>2 · Why it failed (keep asking why, up to 5 times)</span><div class="stack">${[1,2,3,4,5].map(i=>whyRow(pf,i,'',i===1)).join('')}</div></div>
     <label class="f"><span>Evidence pictures (optional, up to 10)</span><input type="file" id="${pf}photos" name="${pf}photos" accept="image/*" multiple></label>
     <div id="${pf}photos-prev" class="frprev" style="display:flex;gap:8px;flex-wrap:wrap"></div>
-    ${area(pf+'fix','3 · Corrective measures','','required maxlength="400" placeholder="What was done to fix it"')}
-    ${fld(pf+'tech','4 · Technician assigned to repair','text','','required autocomplete="off" placeholder="Name of the technician"')}
-    <div class="f"><span>5 · Recommendations</span><div id="${pf}recs" class="stack">${recRow(pf,1,'')}</div><div><button type="button" class="btn sm" data-act="recadd" data-pf="${pf}">+ Add recommendation</button></div></div>`;
+    <div class="f"><span>4 · Recommendations</span><div id="${pf}recs" class="stack">${recRow(pf,1,'')}</div><div><button type="button" class="btn sm" data-act="recadd" data-pf="${pf}">+ Add recommendation</button></div></div>`;
 const recsFromText=s=>String(s||'').split(/\r?\n/).map(l=>l.replace(/^\s*(#?\d+[.)]?\s+)/,'').trim()).filter(Boolean);
 const recsJoin=a=>a.map((r,i)=>(i+1)+'. '+r).join('\n');
 function frRead(f,pf){
   const recs=[...f.querySelectorAll('input[name="'+pf+'rec_"]')].map(i=>i.value.trim()).filter(Boolean),ph=f.querySelector('input[name="'+pf+'photos"]');
-  const o={failureReason:val(f,pf+'cause'),failureParts:val(f,pf+'parts'),corrective:val(f,pf+'fix'),techAssigned:val(f,pf+'tech'),recommendations:recs,recommendation:recsJoin(recs),files:ph&&ph.files?[...ph.files]:[]};
-  o.err=!o.failureReason?'Enter the reason for the failure.':!o.failureParts?'Enter the part/s that failed (type None if no part failed).':!o.corrective?'Enter the corrective measures.':!o.techAssigned?'Enter the technician assigned to repair.':!recs.length?'Enter at least one recommendation.':'';
+  const wc=whyCollect(f,pf),whys=wc.whys;
+  const o={failureReason:recsJoin(whys),whys,techAssigned:val(f,pf+'tech'),recommendations:recs,recommendation:recsJoin(recs),files:[...(ph&&ph.files?[...ph.files]:[]),...wc.files]};
+  o.err=wc.err||(!o.techAssigned?'Enter the technician assigned to repair.':!whys.length?'Enter at least the first reason why it failed.':!recs.length?'Enter at least one recommendation.':'');
   return o;
 }
-const frFields=fr=>({failureReason:fr.failureReason,failureParts:fr.failureParts,corrective:fr.corrective,techAssigned:fr.techAssigned,recommendations:fr.recommendations,recommendation:fr.recommendation});
+const frFields=fr=>({failureReason:fr.failureReason,whys:fr.whys,techAssigned:fr.techAssigned,recommendations:fr.recommendations,recommendation:fr.recommendation});
 async function frJpeg(file){
   let bmp;
   try{bmp=await createImageBitmap(file,{imageOrientation:'from-image'})}
@@ -1531,10 +1633,41 @@ async function frJpeg(file){
 async function frStorePhotos(did,files,existing){
   const out=(existing||[]).slice();
   if(out.length+files.length>10)throw new Error('A failure report can hold up to 10 pictures.');
-  for(const f of files){const j=await frJpeg(f),key='frp/'+did+'/'+Date.now()+'-'+out.length;await IDB.put(key,j.blob);out.push({key,name:f.name,w:j.w,h:j.h,size:j.blob.size})}
+  for(const it of files){const f=it&&it.file?it.file:it,j=await frJpeg(f),key='frp/'+did+'/'+Date.now()+'-'+out.length;await IDB.put(key,j.blob);out.push({key,name:f.name,w:j.w,h:j.h,size:j.blob.size,...(it&&it.why?{why:it.why}:{})})}
   return out;
 }
-let frBusy=false;
+let frBusy=false,frClose=false;
+async function frRelease(r,f,whys,next){
+  const e=eq(r.equip),frNo=r.frNo||nextFr(),cause=whys[whys.length-1]||'';
+  if(next==='restart'){
+    const rd=val(f,'cDate')||today();
+    if(!await put('downtime',r.id,{...rowData(r),end:rd,frNo,releasedBy:'restart',outcome:'restart',statusAfter:'On rental'}))return false;
+    if(e){await put('equipment',e.id,{...rowData(e),status:'On rental',history:hist(e,'Restarted on site on '+fd(rd)+' — cause: '+cause+' · report '+frNo,rd)});await grpNote(e,'Restarted on site on '+fd(rd)+' — cause: '+cause+' · report '+frNo,rd)}
+    toast('Restarted on site · failure report '+frNo+' closed');return true;
+  }
+  if(!e||e.status!=='On rental'){toast('Only a unit that is on rental can be demobilised.');return false}
+  const dt=val(f,'cyDate')||today(),stY=val(f,'cyStatus')||'To be assessed',loc=val(f,'cyLoc');
+  const was=e.project?'project '+e.project+(e.customer?' · '+e.customer:''):(e.customer||'rental');
+  if(!await put('downtime',r.id,{...rowData(r),end:dt>=r.start?dt:r.start,frNo,releasedBy:'demob',outcome:'yard',statusAfter:stY}))return false;
+  await put('equipment',e.id,{...rowData(e),...blankRental,status:stY,customer:'',project:'',dateOut:'',dueBack:'',location:loc||e.location||'',history:hist(e,'Demobilised from '+was+' on '+fd(dt)+' · now '+stY+' · report '+frNo,dt)});
+  toast(e.id+' demobilised to the yard · failure report '+frNo+' closed');return true;
+}
+/* Saving a failure report writes one line to the equipment history (the project history is built from it). Saving again updates that line. */
+async function frHistSave(r,whys,tech,parts,recs,nPics){
+  const e=eq(r.equip);if(!e||!r.frNo)return;
+  const bits=[];
+  if(whys.length)bits.push('why it failed: '+whys.map((w,i)=>(i+1)+') '+w).join(' '));
+  if(parts)bits.push('parts: '+parts);
+  if(tech)bits.push('technician: '+tech);
+  if(recs.length)bits.push('recommendations: '+recs.map((q,i)=>'#'+(i+1)+' '+q).join(' '));
+  if(nPics)bits.push(nPics+' picture'+(nPics===1?'':'s'));
+  const t='Failure report '+r.frNo+' saved'+(bits.length?' — '+bits.join(' · '):''),d=r.end||today(),h=(e.history||[]).slice(),pf='Failure report '+r.frNo+' saved';
+  const old=h.findIndex(v=>(v.t||'').startsWith(pf));if(old>=0)h.splice(old,1);
+  let at=h.length;const k=h.findIndex(v=>(v.d||'')===d&&/^(Demobilised|Returned from rental)/.test(v.t||''));if(k>=0)at=k;
+  h.splice(at,0,{d,t});
+  const out=h.map((v,i)=>[v,i]).sort((a,b)=>(a[0].d||'').localeCompare(b[0].d||'')||a[1]-b[1]).map(v=>v[0]).slice(-60);
+  await put('equipment',e.id,{...rowData(e),history:out});
+}
 async function frAddNow(inp){
   const x=S.downtime.find(r=>r.id===view.id),files=[...inp.files];inp.value='';
   if(!x||!files.length||frBusy)return;
@@ -1546,7 +1679,7 @@ async function frAddNow(inp){
 }
 async function frPhotos(x){
   const out=[];
-  for(const p of (x.photos||[])){try{const b=await IDB.get(p.key);if(b)out.push({u8:new Uint8Array(await b.arrayBuffer()),w:p.w||1000,h:p.h||750,name:p.name||'photo.jpg'})}catch(e){}}
+  for(const p of (x.photos||[])){try{const b=await IDB.get(p.key);if(b)out.push({u8:new Uint8Array(await b.arrayBuffer()),w:p.w||1000,h:p.h||750,name:p.name||'photo.jpg',why:p.why||0})}catch(e){}}
   return out;
 }
 async function frImgs(){
@@ -1568,10 +1701,10 @@ function frDemob(x){
 }
 function frData(x){
   const e=eq(x.equip)||{id:x.equip},s=v=>v==null?'':String(v),done=!!x.end,recs=Array.isArray(x.recommendations)?x.recommendations:recsFromText(x.recommendation),dm=frDemob(x);
-  return {no:s(x.frNo),done,recs,steps:(Array.isArray(x.troubleshooting)?x.troubleshooting:[]).map(s).filter(Boolean),photos:x.photos||[],sections:[
-    {h:'Equipment and project',rows:[['Equipment ID',s(e.id)],['Equipment type',s(e.type)],['Make / model',[e.make,e.model].filter(Boolean).join(' ')],['Serial #',s(e.serial)],...(e.engSerial?[['Engine serial #',s(e.engSerial)]]:[]),...(e.backSerial?[[(btypeOf(e)||'Backend')+' serial #',s(e.backSerial)]]:[]),['Client',s(x.customer)],['Project code',s(x.project)]]},
-    {h:'Shutdown on site',rows:[['Date of shutdown',fd(x.start)],['Current run hours',s(x.hoursAt)],['Failure reported by',s(x.reportedBy)],['Brief description of failure',s(x.note)]]},
-    {h:'Restart and repair',rows:[['Status',done?'Restarted / released from site':'Open, awaiting restart'],['Restart date',done?fd(x.end):''],['Reason for the failure',s(x.failureReason)],['Part/s that failed',s(x.failureParts)],['Corrective measures',s(x.corrective)],['Technician assigned to repair',s(x.techAssigned)]]}],
+  const whys=(Array.isArray(x.whys)&&x.whys.length?x.whys:recsFromText(x.failureReason)).map(s).filter(Boolean);
+  return {no:s(x.frNo),done,recs,whys,steps:[],photos:x.photos||[],sections:[
+    {h:'Equipment and project',rows:[['Equipment ID',s(e.id)],['Equipment type',s(e.type)],['Make / model',[e.make,e.model].filter(Boolean).join(' ')],['Serial #',s(e.serial)],...(e.engSerial?[['Engine serial #',s(e.engSerial)]]:[]),...(e.backSerial?[[(btypeOf(e)||'Backend')+' serial #',s(e.backSerial)]]:[]),['Client',s(x.customer)],['Project code',s(x.project)],['Date of shutdown',fd(x.start)],['Current run hours',s(x.hoursAt)],['Failure reported by',s(x.reportedBy)],['Shutdown Alarm',s(x.note)]]},
+    {h:'Repairs based on Shutdown alarm',rows:[['Technician assigned to repair',s(x.techAssigned)],...[0,1,2,3,4].map(k=>[(k+1)+'. Why it failed',whys[k]||'',k+1])]}],
     after:{h:'Decision and demobilisation',rows:[['Decision after the repair',x.outcome==='yard'?'Demobilize back to Laing Workshop':x.outcome==='restart'?'Restart on site':(x.releasedBy==='demob'?'Demobilised':(done?'Restart on site':''))],['Equipment status after the decision',s(x.statusAfter)||(x.outcome==='restart'||(!x.outcome&&done&&x.releasedBy!=='demob')?'On rental':'')],['Demobilised from project',dm.date?fd(dm.date):(dm.still?'Not demobilised. The unit is still on site.':'')]]}};
 }
 async function buildFrDocx(x,photos){
@@ -1583,15 +1716,16 @@ async function buildFrDocx(x,photos){
   const tc=(w,inner,fill)=>`<w:tc><w:tcPr><w:tcW w:w="${w}" w:type="dxa"/>${fill?`<w:shd w:val="clear" w:color="auto" w:fill="${fill}"/>`:''}</w:tcPr>${inner}</w:tc>`;
   const heading=h=>`<w:p><w:pPr><w:keepNext/><w:spacing w:before="200" w:after="80"/></w:pPr>${run(h,1,26,'1F3864')}</w:p>`;
   const W=[3200,TW-3200];
-  const kv=rows=>tblOpen(W)+rows.map(([k,v])=>`<w:tr><w:trPr><w:cantSplit/></w:trPr>${tc(W[0],paras(k,1,21),'F2F2F2')}${tc(W[1],paras(v,0,22))}</w:tr>`).join('')+'</w:tbl>';
+  const kv=rows=>tblOpen(W)+rows.map(([k,v,w])=>`<w:tr><w:trPr><w:cantSplit/></w:trPr>${tc(W[0],paras(k,1,21),'F2F2F2')}${tc(W[1],paras(v,0,22)+(w?whyPics(w):''))}</w:tr>`).join('')+'</w:tbl>';
   const RW=[900,TW-900];
   const stepT=d.steps.length?heading('Troubleshooting steps')+tblOpen(RW)+`<w:tr><w:trPr><w:cantSplit/><w:tblHeader/></w:trPr>${tc(RW[0],paras('Step',1,21,'center'),'F2F2F2')}${tc(RW[1],paras('What was checked or done',1,21),'F2F2F2')}</w:tr>`+d.steps.map((r,i)=>`<w:tr><w:trPr><w:cantSplit/></w:trPr>${tc(RW[0],paras(String(i+1),1,22,'center'))}${tc(RW[1],paras(r,0,22))}</w:tr>`).join('')+'</w:tbl>':'';
   const recT=tblOpen(RW)+`<w:tr><w:trPr><w:cantSplit/><w:tblHeader/></w:trPr>${tc(RW[0],paras('#',1,21,'center'),'F2F2F2')}${tc(RW[1],paras('Recommendation',1,21),'F2F2F2')}</w:tr>`+(d.recs.length?d.recs:['']).map((r,i)=>`<w:tr><w:trPr><w:cantSplit/></w:trPr>${tc(RW[0],paras(r?'#'+(i+1):'',1,22,'center'))}${tc(RW[1],paras(r,0,22))}</w:tr>`).join('')+'</w:tbl>';
   const NS='xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"';
-  const pic=(i,p,rid)=>{const k=Math.min(3200400/p.w,2286000/p.h),cx=Math.round(p.w*k),cy=Math.round(p.h*k);return `<w:r><w:drawing><wp:inline ${NS} distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${cx}" cy="${cy}"/><wp:docPr id="${100+i}" name="Photo ${i}"/><wp:cNvGraphicFramePr/><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic><pic:nvPicPr><pic:cNvPr id="${i}" name="photo${i}.jpeg"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="${rid}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>`};
-  let photoT='';
-  if(photos.length){const PW=[TW/2,TW/2];photoT=heading('Photographic evidence')+tblOpen(PW);
-    for(let i=0;i<photos.length;i+=2){photoT+='<w:tr><w:trPr><w:cantSplit/></w:trPr>'+[0,1].map(j=>{const p=photos[i+j];return tc(PW[j],p?`<w:p><w:pPr><w:spacing w:before="60" w:after="40"/><w:jc w:val="center"/></w:pPr>${pic(i+j+1,p,'rIdFr'+(i+j+1))}</w:p>`+paras('Photo '+(i+j+1)+' · '+p.name,0,18,'center'):'<w:p/>')}).join('')+'</w:tr>'}
+  const pic=(i,p,rid,mw,mh)=>{const k=Math.min((mw||3200400)/p.w,(mh||2286000)/p.h),cx=Math.round(p.w*k),cy=Math.round(p.h*k);return `<w:r><w:drawing><wp:inline ${NS} distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${cx}" cy="${cy}"/><wp:docPr id="${100+i}" name="Photo ${i}"/><wp:cNvGraphicFramePr/><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic><pic:nvPicPr><pic:cNvPr id="${i}" name="photo${i}.jpeg"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="${rid}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>`};
+  const whyPics=w=>{const l=photos.map((p,i)=>[p,i]).filter(([p])=>p.why===w);return l.length?`<w:p><w:pPr><w:spacing w:before="60" w:after="60"/></w:pPr>${l.map(([p,i],n)=>(n?run('  ',0,22):'')+pic(i+1,p,'rIdFr'+(i+1),1920240,1371600)).join('')}</w:p>`:''};
+  let photoT='';const gp=photos.map((p,i)=>({p,i})).filter(o=>!o.p.why);
+  if(gp.length){const PW=[TW/2,TW/2];photoT=heading('Photographic evidence')+tblOpen(PW);
+    for(let a=0;a<gp.length;a+=2){photoT+='<w:tr><w:trPr><w:cantSplit/></w:trPr>'+[0,1].map(j=>{const o=gp[a+j];return tc(PW[j],o?`<w:p><w:pPr><w:spacing w:before="60" w:after="40"/><w:jc w:val="center"/></w:pPr>${pic(o.i+1,o.p,'rIdFr'+(o.i+1))}</w:p>`+paras('Photo '+(a+j+1)+' · '+o.p.name,0,18,'center'):'<w:p/>')}).join('')+'</w:tr>'}
     photoT+='</w:tbl>'}
   const title=`<w:p><w:pPr><w:pBdr><w:top w:val="single" w:sz="6" w:space="0" w:color="000000"/><w:left w:val="single" w:sz="6" w:space="0" w:color="000000"/><w:bottom w:val="single" w:sz="6" w:space="1" w:color="000000"/><w:right w:val="single" w:sz="6" w:space="0" w:color="000000"/></w:pBdr><w:spacing w:before="860" w:after="120"/><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/><w:b/><w:sz w:val="32"/><w:szCs w:val="32"/><w:highlight w:val="lightGray"/></w:rPr><w:t>FAILURE REPORT</w:t></w:r></w:p>`;
   const no=`<w:p><w:pPr><w:spacing w:before="60" w:after="60"/><w:jc w:val="center"/></w:pPr>${run('Failure Report No. ',0,26)}<w:r><w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri"/><w:b/><w:sz w:val="26"/><w:szCs w:val="26"/><w:u w:val="dotted"/></w:rPr><w:t xml:space="preserve"> ${xlX(d.no)} </w:t></w:r></w:p>`;
@@ -1628,11 +1762,13 @@ function buildFrPdf(x,photos){
   const box=(x0,y0,w,h)=>pdfLn(x0,y0,x0+w,y0,.5,GRY)+pdfLn(x0,y0+h,x0+w,y0+h,.5,GRY)+pdfLn(x0,y0,x0,y0+h,.5,GRY)+pdfLn(x0+w,y0,x0+w,y0+h,.5,GRY);
   const kv=s=>{
     need(60);c+=pdfT(L,y+13,s.h,'hb',12,NAVY);y+=20;
-    s.rows.forEach(([k,v])=>{
-      const kl=pdfWrap(k,'hb',9.5,LW-2*PAD),vl=pdfWrap(v,'tr',FS,R-L-LW-2*PAD),h=Math.max(21,Math.max(kl.length*12,vl.length*LH)+9);
+    s.rows.forEach(([k,v,w])=>{
+      const kl=pdfWrap(k,'hb',9.5,LW-2*PAD),vl=pdfWrap(v,'tr',FS,R-L-LW-2*PAD),ip=w?photos.map((p,i)=>[p,i]).filter(([p])=>p.why===w):[],IW=170,IH=125,ih=ip.length?Math.ceil(ip.length/2)*(IH+8)+2:0,h=Math.max(21,Math.max(kl.length*12,vl.length*LH)+9)+ih;
       need(h);c+=pdfBox(L,y,LW,h,SH);
       kl.forEach((s2,i)=>{if(s2)c+=pdfT(L+PAD,y+14+i*12,s2,'hb',9.5,BLK)});
       vl.forEach((s2,i)=>{if(s2)c+=pdfT(L+LW+PAD,y+14+i*LH,s2,'tr',FS,BLK)});
+      ip.forEach(([p,i],n)=>{const k2=Math.min(IW/p.w,IH/p.h),pw=p.w*k2,ph2=p.h*k2,x0=L+LW+PAD+(n%2)*(IW+8),y0=y+Math.max(vl.length,1)*LH+8+Math.floor(n/2)*(IH+8);
+        c+=box(x0,y0,pw,ph2)+`q ${pdfF2(pw)} 0 0 ${pdfF2(ph2)} ${pdfF2(x0)} ${pdfY(y0+ph2)} cm /Im${i+2} Do Q\n`});
       c+=box(L,y,R-L,h)+pdfLn(L+LW,y,L+LW,y+h,.5,GRY);y+=h;
     });
     y+=16;
@@ -1659,13 +1795,14 @@ function buildFrPdf(x,photos){
   });
   y+=16;
   kv(d.after);
-  if(photos.length){
+  const gp=photos.map((p,i)=>({p,i})).filter(o=>!o.p.why);
+  if(gp.length){
     need(250);c+=pdfT(L,y+13,'Photographic evidence','hb',12,NAVY);y+=22;
     const CWd=(R-L-12)/2,CH=185;
-    for(let i=0;i<photos.length;i+=2){
+    for(let a=0;a<gp.length;a+=2){
       need(CH+30);
-      [0,1].forEach(j=>{const p=photos[i+j];if(!p)return;const k=Math.min((CWd-8)/p.w,(CH-8)/p.h),w=p.w*k,h=p.h*k,x0=L+j*(CWd+12);
-        c+=box(x0,y,CWd,CH)+`q ${pdfF2(w)} 0 0 ${pdfF2(h)} ${pdfF2(x0+(CWd-w)/2)} ${pdfY(y+(CH-h)/2+h)} cm /Im${i+j+2} Do Q\n`+pdfT(x0,y+CH+11,pdfWrap('Photo '+(i+j+1)+' · '+p.name,'he',8.5,CWd)[0],'he',8.5,BLK)});
+      [0,1].forEach(j=>{const o=gp[a+j];if(!o)return;const p=o.p,k=Math.min((CWd-8)/p.w,(CH-8)/p.h),w=p.w*k,h=p.h*k,x0=L+j*(CWd+12);
+        c+=box(x0,y,CWd,CH)+`q ${pdfF2(w)} 0 0 ${pdfF2(h)} ${pdfF2(x0+(CWd-w)/2)} ${pdfY(y+(CH-h)/2+h)} cm /Im${o.i+2} Do Q\n`+pdfT(x0,y+CH+11,pdfWrap('Photo '+(a+j+1)+' · '+p.name,'he',8.5,CWd)[0],'he',8.5,BLK)});
       y+=CH+24;
     }
   }
@@ -1673,20 +1810,51 @@ function buildFrPdf(x,photos){
 }
 const FR_DIRECTORS='Directors: M. Laing, D. Laing, G. Laing, N. Laing-Kublalsingh, L. Laing';
 const frLh=()=>`<div class="lh" style="background-image:url(data:image/jpeg;base64,${FR_BG})"></div><div class="cw" aria-hidden="true">CONFIDENTIAL</div>`;
-const frSec=s=>`<h3 class="hs">${esc(s.h)}</h3><div class="tw"><table class="frt"><tbody>${s.rows.map(([k,v])=>`<tr><th scope="row">${esc(k)}</th><td>${esc(v)}</td></tr>`).join('')}</tbody></table></div>`;
+const frWhyPics=(ph,w)=>{const l=(ph||[]).filter(p=>p.why===w);return l.length?`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">${l.map(p=>`<a target="_blank" rel="noopener"><img data-frp="${esc(p.key)}" alt="Picture for Why ${w}" style="width:200px;max-width:100%;border:1px solid #bbb;background:#f4f4f4;min-height:80px"></a>`).join('')}</div>`:''};
+const frSec=(s,ph)=>`<h3 class="hs">${esc(s.h)}</h3><div class="tw"><table class="frt"><tbody>${s.rows.map(([k,v,w])=>`<tr><th scope="row">${esc(k)}</th><td>${esc(v)}${w&&ph?frWhyPics(ph,w):''}</td></tr>`).join('')}</tbody></table></div>`;
+const frWhyPicsEdit=(ph,w)=>{const l=(ph||[]).filter(p=>p.why===w);return l.length?`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">${l.map(p=>`<label style="width:150px;display:block"><img data-frp="${esc(p.key)}" alt="Picture for Why ${w}" style="width:100%;height:100px;object-fit:cover;border:1px solid #bbb;background:#f4f4f4"><span style="display:flex;gap:6px;align-items:center;font-size:12px"><input type="checkbox" name="rmph" value="${esc(p.key)}"> Remove</span></label>`).join('')}</div>`:''};
 function viewFr(){
   const x=S.downtime.find(r=>r.id===view.id);
   if(!x) return `<div class="panel"><div class="empty">Failure report not found.</div></div>`;
-  const d=frData(x);
+  const d=frData(x),gp=d.photos.filter(p=>!p.why),recs=d.recs.length?d.recs:[''];
+  const txt=(id,v,ph)=>`<input id="${id}" name="${id}" type="text" value="${esc(v||'')}" maxlength="300" autocomplete="off" placeholder="${ph}">`;
+  const rr=d.sections[1].rows;
+  const repair=`<h3 class="hs">Repairs based on Shutdown alarm</h3><div class="tw"><table class="frt"><tbody>
+    <tr><th scope="row"><label for="tech">${esc(rr[0][0])}</label></th><td>${txt('tech',x.techAssigned,'Name of the technician')}</td></tr>
+    ${[1,2,3,4,5].map(i=>`<tr><th scope="row"><label for="ewhy${i}">${i}. Why it failed</label></th><td><input id="ewhy${i}" name="ewhy_" type="text" value="${esc(d.whys[i-1]||'')}" maxlength="300" autocomplete="off" placeholder="Why ${i}"><div class="whyrow" style="margin-top:6px"><label class="btn sm ghost" style="cursor:pointer">+ Picture<input type="file" name="ewhyph${i}" accept="image/*" multiple hidden></label> <span class="whyfn" style="font-size:12px"></span></div>${frWhyPicsEdit(d.photos,i)}</td></tr>`).join('')}
+  </tbody></table></div>`;
+  const ee=eq(x.equip),canClose=!d.done&&ee&&ee.status==='On rental';
+  const sd=d.sections[0],ein=(id,type,v,extra)=>`<input id="${id}" name="${id}" type="${type}" value="${esc(v==null?'':v)}" ${extra||''}>`;
+  const shutSec=`<h3 class="hs">${esc(sd.h)}</h3><div class="tw"><table class="frt"><tbody>${sd.rows.slice(0,-4).map(([k,v])=>`<tr><th scope="row">${esc(k)}</th><td>${esc(v)}</td></tr>`).join('')}
+    <tr><th scope="row"><label for="sdStart">Date of shutdown</label></th><td>${ein('sdStart','date',x.start,'max="'+today()+'" required')}</td></tr>
+    <tr><th scope="row"><label for="sdHrs">Current run hours</label></th><td>${ein('sdHrs','number',x.hoursAt,'min="0" step="any" inputmode="decimal"')}</td></tr>
+    <tr><th scope="row"><label for="sdBy">Failure reported by</label></th><td>${ein('sdBy','text',x.reportedBy,'maxlength="120" autocomplete="off"')}</td></tr>
+    <tr><th scope="row"><label for="sdNote">Shutdown Alarm</label></th><td><textarea id="sdNote" name="sdNote" rows="2" maxlength="400">${esc(x.note||'')}</textarea></td></tr></tbody></table></div>`;
+  const closeSec=canClose?`<h3 class="hs">Close the failure report</h3><div class="hint" style="margin:6px 0">Leave this section blank to keep the report open and keep working on it. When the unit is repaired, choose what happens to it and press <b>Close report &amp; release unit</b>.</div><div class="tw"><table class="frt"><tbody>
+    <tr><th scope="row">Decision after the repair</th><td>
+      <label class="opt"><input type="radio" name="cnext" value="restart"> <b>Restart on site.</b> The unit stays on the project and goes back to <b>On rental</b>.</label>
+      <label class="opt"><input type="radio" name="cnext" value="yard"> <b>Demobilize back to Laing Workshop.</b> The unit leaves the project and takes the status you choose below.</label></td></tr>
+    <tr id="c-restdate" hidden><th scope="row"><label for="cDate">Restart date</label></th><td><input id="cDate" name="cDate" type="date" value="${esc(today())}" max="${esc(today())}"></td></tr>
+    <tr id="c-yard" hidden><th scope="row">Return to the yard</th><td>
+      <label class="opt">Demobilisation date<br><input id="cyDate" name="cyDate" type="date" value="${esc(today())}"></label>
+      <label class="opt">Equipment status at the yard<br><select id="cyStatus" name="cyStatus">${['To be assessed','Level 1 service','Level 2 service','Level 3 service','Available'].map(o=>`<option>${o}</option>`).join('')}</select></label>
+      <label class="opt">Yard location (optional)<br><input id="cyLoc" name="cyLoc" type="text" value="${esc((ee&&ee.location)||'')}" autocomplete="off"></label></td></tr>
+  </tbody></table></div>`:'';
+  const save=`<button class="btn pri" type="submit" form="frm">${d.done?'Save':'Save for later'}</button>${canClose?`<button class="btn" type="button" data-act="frclose">Close report &amp; release unit</button>`:''}`;
   return `<button class="link back" data-act="frback">‹ Back</button><h2>Failure report ${esc(d.no)}</h2>
-  <div class="hint">${d.done?'Complete. The unit has been restarted or released from site.':'Open. It is completed when the unit is restarted on site or demobilised.'}</div>
-  <div class="actions"><button class="btn pri" data-act="fredit" data-id="${esc(x.id)}">Update report</button><button class="btn" data-act="frpdf" data-id="${esc(x.id)}">Download PDF</button><button class="btn" data-act="frdoc" data-id="${esc(x.id)}">Download Word</button><label class="btn" style="cursor:pointer">+ Add pictures (optional)<input type="file" id="frAdd" accept="image/*" multiple hidden></label></div>
-  <div class="frdoc">${frLh()}<div class="bd"><div class="ttl"><span>FAILURE REPORT</span></div><div class="no">Failure Report No. <u>${esc(d.no)}</u></div>
-  ${d.sections.map(frSec).join('')}
-  ${d.steps.length?`<h3 class="hs">Troubleshooting steps</h3><div class="tw"><table class="frt rec"><thead><tr><th style="width:70px;text-align:center">Step</th><th>What was checked or done</th></tr></thead><tbody>${d.steps.map((r,i)=>`<tr><th scope="row" style="text-align:center">${i+1}</th><td>${esc(r)}</td></tr>`).join('')}</tbody></table></div>`:''}
-  <h3 class="hs">Recommendations</h3><div class="tw"><table class="frt rec"><thead><tr><th style="width:70px;text-align:center">#</th><th>Recommendation</th></tr></thead><tbody>${(d.recs.length?d.recs:['']).map((r,i)=>`<tr><th scope="row" style="text-align:center">${r?'#'+(i+1):''}</th><td>${esc(r)}</td></tr>`).join('')}</tbody></table></div>
-  ${frSec(d.after)}
-  ${d.photos.length?`<h3 class="hs">Photographic evidence</h3><div style="display:flex;gap:10px;flex-wrap:wrap">${d.photos.map((p,i)=>`<figure style="margin:0;width:230px"><a target="_blank" rel="noopener"><img data-frp="${esc(p.key)}" alt="Evidence photo ${i+1}" style="width:100%;border:1px solid #bbb;background:#f4f4f4;min-height:120px"></a><figcaption style="font-size:12px;color:#333">Photo ${i+1} · ${esc(p.name||'')}</figcaption></figure>`).join('')}</div>`:''}</div><div class="ft">${FR_DIRECTORS}</div></div>`;
+  <div class="hint">${d.done?'Complete. The unit has been restarted or released from site.':'Open. The unit stays shut down until you close this report.'} Every field below can be edited. ${d.done?'Press Save to update the report.':'Press <b>Save for later</b> to keep your work and come back to it, or close the report when the unit is ready.'} Saving updates the report and adds it to the equipment history, which also shows in the project history.</div>
+  <div class="actions">${save}<button class="btn" type="button" data-act="frpdf" data-id="${esc(x.id)}">Download PDF</button><button class="btn" type="button" data-act="frdoc" data-id="${esc(x.id)}">Download Word</button></div>
+  <form id="frm" autocomplete="off"><div class="frdoc">${frLh()}<div class="bd"><div class="ttl"><span>FAILURE REPORT</span></div><div class="no">Failure Report No. <u>${esc(d.no)}</u></div>
+  ${shutSec}
+  ${repair}
+  <h3 class="hs">Recommendations</h3><div id="erecs" class="recbox">${recs.map((v,i)=>recRow('e',i+1,v)).join('')}</div><div style="margin-top:8px"><button type="button" class="btn sm" data-act="recadd" data-pf="e">+ Add recommendation</button></div>
+  ${canClose?closeSec:frSec(d.after)}
+  <h3 class="hs">Photographic evidence</h3>
+  ${gp.length?`<div style="display:flex;gap:10px;flex-wrap:wrap">${gp.map((p,i)=>`<label style="width:150px;display:block"><img data-frp="${esc(p.key)}" alt="Evidence photo ${i+1}" style="width:100%;height:100px;object-fit:cover;border:1px solid #bbb;background:#f4f4f4"><span style="display:flex;gap:6px;align-items:center;font-size:12px"><input type="checkbox" name="rmph" value="${esc(p.key)}"> Remove · Photo ${i+1}</span></label>`).join('')}</div>`:''}
+  <label class="f" style="margin-top:8px"><span>Add pictures (optional, up to 10 in total)</span><input type="file" id="ephotos" name="ephotos" accept="image/*" multiple></label>
+  <div id="ephotos-prev" class="frprev" style="display:flex;gap:8px;flex-wrap:wrap"></div>
+  </div><div class="ft">${FR_DIRECTORS}</div></div>
+  <div class="actions">${save}<button class="btn ghost" type="button" data-act="frback">Back</button></div></form>`;
 }
 const histKind=t=>RENT_START.test(t)?'rent':/^Shutdown on site/.test(t)?'down':/^Restarted on site/.test(t)?'restart':/^(Demobilised from|Returned from rental)/.test(t)?'demob':'gen';
 const histDown=t=>{const m=/^Shutdown on site — (.*?) \(reported by (.*?) · (.*?) run hrs\)(.*)$/s.exec(t||'');return m?{fail:m[1],rpt:m[2],hrs:m[3],rest:m[4]}:null};
@@ -1791,17 +1959,14 @@ const tsRow=(i,v)=>`<div class=\"tsrow\" style=\"display:flex;gap:8px;align-item
 function viewFrEdit(){
   const x=S.downtime.find(r=>r.id===view.id);
   if(!x) return `<div class=\"panel\"><div class=\"empty\">Failure report not found.</div></div>`;
-  const d=frData(x),steps=d.steps.length?d.steps:[''],recs=d.recs.length?d.recs:[''];
+  const d=frData(x),recs=d.recs.length?d.recs:[''];
   return `<button class=\"link back\" data-act=\"frview\" data-id=\"${esc(x.id)}\">‹ Back to report</button><h2>Update failure report ${esc(d.no)}</h2>
-  <div class=\"hint\">Change any detail, add troubleshooting steps or add and remove pictures. Nothing here is required. The unit's status is not changed.</div>
+  <div class=\"hint\">Change any detail or add and remove pictures. Nothing here is required. The unit's status is not changed.</div>
   <form id=\"frm\" autocomplete=\"off\">
-    ${area('cause','Reason for the failure',x.failureReason,'maxlength=\"400\" placeholder=\"What caused the failure\"')}
-    ${fld('parts','Part/s that failed','text',x.failureParts,'maxlength=\"300\" autocomplete=\"off\" placeholder=\"e.g. Thermostat, radiator hose (type None if no part failed)\"')}
-    <div class=\"f\"><span>Troubleshooting steps (in the order they were done)</span><div id=\"tsbox\" class=\"stack\">${steps.map((v,i)=>tsRow(i+1,v)).join('')}</div><div><button type=\"button\" class=\"btn sm\" data-act=\"tsadd\">+ Add step</button></div></div>
-    ${area('fix','Corrective measures',x.corrective,'maxlength=\"400\" placeholder=\"What was done to fix it\"')}
     ${fld('tech','Technician assigned to repair','text',x.techAssigned,'autocomplete=\"off\" placeholder=\"Name of the technician\"')}
+    <div class=\"f\"><span>Why it failed (up to 5 whys)</span><div class=\"stack\">${[0,1,2,3,4].map(k=>whyRow('e',k+1,d.whys[k]||'',false)).join('')}</div></div>
     <div class=\"f\"><span>Recommendations</span><div id=\"erecs\" class=\"stack\">${recs.map((v,i)=>recRow('e',i+1,v)).join('')}</div><div><button type=\"button\" class=\"btn sm\" data-act=\"recadd\" data-pf=\"e\">+ Add recommendation</button></div></div>
-    ${d.photos.length?`<div class=\"f\"><span>Current pictures (tick to remove)</span><div style=\"display:flex;gap:10px;flex-wrap:wrap\">${d.photos.map((p,i)=>`<label style=\"width:130px;display:block\"><img data-frp=\"${esc(p.key)}\" alt=\"Picture ${i+1}\" style=\"width:100%;height:96px;object-fit:cover;border:1px solid var(--line);border-radius:4px;background:#f4f4f4\"><span style=\"display:flex;gap:6px;align-items:center;font-size:12px\"><input type=\"checkbox\" name=\"rmph\" value=\"${esc(p.key)}\"> Remove</span></label>`).join('')}</div></div>`:''}
+    ${d.photos.length?`<div class=\"f\"><span>Current pictures (tick to remove)</span><div style=\"display:flex;gap:10px;flex-wrap:wrap\">${d.photos.map((p,i)=>`<label style=\"width:130px;display:block\"><img data-frp=\"${esc(p.key)}\" alt=\"Picture ${i+1}\" style=\"width:100%;height:96px;object-fit:cover;border:1px solid var(--line);border-radius:4px;background:#f4f4f4\"><span style=\"display:flex;gap:6px;align-items:center;font-size:12px\"><input type=\"checkbox\" name=\"rmph\" value=\"${esc(p.key)}\"> Remove${p.why?' (Why '+p.why+')':''}</span></label>`).join('')}</div></div>`:''}
     <label class=\"f\"><span>Add pictures (optional, up to ${10} in total)</span><input type=\"file\" id=\"ephotos\" name=\"ephotos\" accept=\"image/*\" multiple></label>
     <div id=\"ephotos-prev\" class=\"frprev\" style=\"display:flex;gap:8px;flex-wrap:wrap\"></div>
     <div class=\"actions\"><button class=\"btn pri\" type=\"submit\">Save report</button><button class=\"btn ghost\" type=\"button\" data-act=\"frview\" data-id=\"${esc(x.id)}\">Cancel</button></div>
@@ -1819,21 +1984,19 @@ function viewRestart(){
   <h2>Failure report · restart or demobilise</h2>
   <div class="hint">This is the failure report for ${esc(label(e))}. The shutdown details are filled in. Complete the restart and repair details below. The report is saved as ${esc(d.no||'a failure report')} and appears on the Project page.</div>
   <form id="frm" autocomplete="off"><div class="frdoc">${frLh()}<div class="bd"><div class="ttl"><span>FAILURE REPORT</span></div><div class="no">Failure Report No. <u>${esc(d.no||'to be assigned')}</u></div>
-  ${frSec(d.sections[0])}${frSec(d.sections[1])}
-  <h3 class="hs">3 · Based on the failure, select the next step</h3><div class="tw"><table class="frt"><tbody>
+  ${frSec(d.sections[0])}
+  <h3 class="hs">Decision after the repair</h3><div class="tw"><table class="frt"><tbody>
     <tr><th scope="row">Choose one</th><td>
       <label class="opt"><input type="radio" name="rnext" value="restart" required> <b>Restart on site.</b> The unit stays on the project and goes back to <b>On rental</b>.</label>
       <label class="opt"><input type="radio" name="rnext" value="yard" required> <b>Demobilize back to Laing Workshop.</b> The unit leaves the project and takes the status you choose below.</label></td></tr>
   </tbody></table></div>
   <div id="r-after" hidden>
   <div id="r-repair">
-  <h3 class="hs">Restart and repair</h3><div class="tw"><table class="frt"><tbody>
+  <h3 class="hs">Repairs based on Shutdown alarm</h3><div class="tw"><table class="frt"><tbody>
     <tr id="r-restdate"><th scope="row"><label for="rDate">Restart date</label></th><td><input id="rDate" name="rDate" type="date" value="${esc(today())}" min="${esc(r.start||'')}" max="${esc(today())}"></td></tr>
-    <tr><th scope="row"><label for="rcause">Reason for the failure</label></th><td>${ta('rcause','What caused the failure')}</td></tr>
-    <tr><th scope="row"><label for="rparts">Part/s that failed</label></th><td>${inp('rparts','text','required maxlength="300" placeholder="e.g. Thermostat, radiator hose (type None if no part failed)"')}</td></tr>
-    <tr><th scope="row"><label for="rphotos">Evidence pictures (optional, up to 10)</label></th><td>${inp('rphotos','file','accept="image/*" multiple')}<div id="rphotos-prev" class="frprev" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px"></div></td></tr>
-    <tr><th scope="row"><label for="rfix">Corrective measures</label></th><td>${ta('rfix','What was done to fix it')}</td></tr>
     <tr><th scope="row"><label for="rtech">Technician assigned to repair</label></th><td>${inp('rtech','text','required autocomplete="off" placeholder="Name of the technician"')}</td></tr>
+    ${[1,2,3,4,5].map(i=>`<tr><th scope="row"><label for="rwhy${i}">${i}. Why it failed</label></th><td><input id="rwhy${i}" name="rwhy_" type="text" maxlength="300" ${i===1?'required ':''}autocomplete="off" placeholder="Why ${i}"><div class="whyrow" style="margin-top:6px"><label class="btn sm ghost" style="cursor:pointer">+ Picture<input type="file" name="rwhyph${i}" accept="image/*" multiple hidden></label> <span class="whyfn" style="font-size:12px"></span></div></td></tr>`).join('')}
+    <tr><th scope="row"><label for="rphotos">Evidence pictures (optional, up to 10)</label></th><td>${inp('rphotos','file','accept="image/*" multiple')}<div id="rphotos-prev" class="frprev" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px"></div></td></tr>
   </tbody></table></div>
   <h3 class="hs">Recommendations</h3><div id="rrecs" class="recbox">${recRow('r',1,'')}</div><div style="margin-top:8px"><button type="button" class="btn sm" data-act="recadd" data-pf="r">+ Add recommendation</button></div>
   </div>
@@ -1857,7 +2020,7 @@ function viewDown(){
   <form class="form" id="frm" autocomplete="off">
     ${fld('start','Shutdown date','date',x.start,'required')}
     ${fld('hoursAt','1 · Current run hours','number',x.hoursAt,'required min="0" step="any" inputmode="decimal"')}
-    ${area('note','2 · Brief description of failure',x.note,'required maxlength="400"')}
+    ${area('note','2 · Shutdown Alarm',x.note,'required maxlength="400"')}
     ${fld('reportedBy','3 · Failure reported by','text',x.reportedBy,'required autocomplete="off"')}
     ${x.frNo?`<div class="actions"><span class="chip info">Failure report ${esc(x.frNo)}</span><button class="btn sm" type="button" data-act="frview" data-id="${esc(x.id)}">View</button><button class="btn sm" type="button" data-act="frdoc" data-id="${esc(x.id)}">Word</button><button class="btn sm" type="button" data-act="frpdf" data-id="${esc(x.id)}">PDF</button>${x.end?'':`<button class="btn sm pri" type="button" data-act="restart" data-id="${esc(x.id)}">Restart on site</button>`}</div>`:''}
     <div class="actions"><button class="btn pri" type="submit">Save</button><button class="btn ghost" type="button" data-act="open" data-id="${esc(e.id)}">Cancel</button>
@@ -1879,7 +2042,7 @@ function viewDetail(){
   ${lateDays(e)?`<div class="notice" role="alert"><b>Return overdue.</b> ${esc(label(e))} was due to be demobilised on ${esc(fd(e.dueBack))} and is ${lateDays(e)} day${lateDays(e)===1?'':'s'} past that date${e.project?' (project '+esc(e.project)+')':''}${e.customer?' · '+esc(e.customer):''}.</div>`:''}
   ${isSold(e)&&isRepair(e.status)?`<div class="notice">Sold${e.sale&&e.sale.buyer?' to '+esc(e.sale.buyer):''}. This unit is in service for repair and goes back to Sold when its job card is closed.</div>`:''}
   <div class="actions">${e.status==='Sold'?`<button class="btn pri" data-act="unsell" data-id="${esc(e.id)}">${confirmDel?'Click again to reverse the sale':'Reverse sale'}</button><button class="btn" data-act="go" data-v="ticketnew" data-id="${esc(e.id)}">Log job card (repair)</button>`:`${isRepair(e.status)?(()=>{const oj=openJobFor(e.id);return `<button class="btn" type="button" disabled aria-disabled="true" title="Locked while the unit is in service or to be assessed">Change status · locked</button>${oj?`<button class="btn pri" data-act="tkt" data-id="${esc(oj.id)}">Open job card ${esc(oj.id)}</button>`:`<button class="btn pri" data-act="go" data-v="ticketnew" data-id="${esc(e.id)}">Log job card</button>`}<span class="hint" style="align-self:center">Status can only be changed from the job card.</span>`})():`<button class="btn pri" data-act="go" data-v="status" data-id="${esc(e.id)}">Change status</button>`}`}
-    ${e.status==='On rental'?`<button class="btn" data-act="go" data-v="status" data-id="${esc(e.id)}" data-dates="1">Update rental dates</button><button class="btn" data-act="go" data-v="demob" data-id="${esc(e.id)}">Demobilise</button>`:''}
+    ${e.status==='On rental'?`<button class="btn" data-act="go" data-v="status" data-id="${esc(e.id)}" data-dates="1">Update rental dates</button>`:''}
     ${e.status==='On rental'||isSold(e)||e.type==='Skid / CCU'?'':e.skid?`<button class="btn" data-act="uninstall" data-id="${esc(e.id)}">Remove from ${esc(e.skid)}</button>`:`<button class="btn" data-act="go" data-v="install" data-eq="${esc(e.id)}">Install in skid / CCU</button>`}
     ${e.type==='Skid / CCU'&&sk(e.id)&&!sk(e.id).retired&&!isSold(e)?`<button class="btn pri" data-act="go" data-v="install" data-sk="${esc(e.id)}">Install equipment in ${esc(e.id)}</button>`:''}
     <button class="btn ghost" data-act="go" data-v="edit" data-id="${esc(e.id)}">Edit details</button></div>
@@ -2084,15 +2247,16 @@ function viewSales(){
     let log='';
     if(sel){
       const k=sel.toLowerCase();
-      const ev=projLogEvents(sel);
+      const ev=(PLR={},projLogEvents(sel));
       const units=S.equipment.filter(e=>e.status==='On rental'&&(e.project||'').toLowerCase()===k);
-      log=`<div class="hint"><b>${esc(sel)}</b> · ${units.length} unit${units.length===1?'':'s'} on rental now · ${mrsForProj(sel).length} material requisition${mrsForProj(sel).length===1?'':'s'} · ${ev.length} log entr${ev.length===1?'y':'ies'}</div>
-      <div class="tablewrap"><table class="eqtable"><thead><tr><th>Date</th><th>Type</th><th>Location</th><th>Reference</th><th>Entry</th><th>PDF</th></tr></thead><tbody>${ev.length?ev.map(x=>`<tr><td>${x.d?fd(x.d):'—'}</td><td>${x.kind}</td><td>${x.loc?esc(x.loc):'—'}</td><td><span class="code">${esc(x.ref)}</span></td><td>${esc(x.t)}</td><td>${x.mr&&x.mr.pdf?`<button class="btn sm" data-act="mrpdf" data-id="${esc(x.mr.id)}">View</button> <button class="btn sm" data-act="mrpdfdl" data-id="${esc(x.mr.id)}">Download</button>`:''}${plEvFiles(x)}${x.eid?` <button class="btn sm danger" data-act="plevdel" data-id="${esc(sel)}" data-eid="${esc(x.eid)}">Remove</button>`:''}</td></tr>`).join(''):'<tr><td colspan="6" class="empty">Nothing logged for this project yet.</td></tr>'}</tbody></table></div>`+plAddPanel(sel)+plFilesPanel(sel)+frPanel(sel,'plog')+mrPanel(mrsProject(sel),'Material requisitions for project '+sel+' (PDF copies)');
+      log=`<div class="hint"><b>${esc(sel)}</b> · ${units.length} unit${units.length===1?'':'s'} on rental now · ${mrsForProj(sel).length} material requisition${mrsForProj(sel).length===1?'':'s'} · ${ev.length} log entr${ev.length===1?'y':'ies'}</div>${F.ple===sel?'<div class="hint"><b>Editing the project history.</b> Change the date, location or entry text of any row (material requisition rows are edited in their own record), use <b>+ Add row</b> to add an entry, <b>Remove</b> to take a row out, then press <b>Save changes</b> (added rows are saved then). Changed rows are marked <i>edited</i>; <b>Reset</b> puts the original back.</div>':''}
+      <div class="tablewrap"><table class="eqtable"><thead><tr><th>Date</th><th>Type</th><th>Location</th><th>Reference</th><th>Entry</th><th>PDF</th></tr></thead><tbody>${ev.length?ev.map(x=>{const ed=F.ple===sel&&(x.eid||x.ek);if(ed)PLR[x.eid||x.ek]=x;const ei='font-size:14px;padding:6px 8px;border:2px solid var(--accent);border-radius:4px;background:var(--surface);color:var(--ink);width:100%;box-sizing:border-box';return `<tr${ed?` data-ple="${esc(x.eid||x.ek)}"`:''}><td>${ed?`<input type="date" class="pleD" value="${esc(x.d||'')}" style="${ei};min-width:140px">`:(x.d?fd(x.d):'—')}</td><td>${x.kind}${x.edited?' <span class="chip warn">edited</span>':''}</td><td>${ed?`<input class="pleL" value="${esc(x.loc||'')}" style="${ei};min-width:120px">`:(x.loc?esc(x.loc):'—')}</td><td><span class="code">${esc(x.ref)}</span></td><td>${ed?`<textarea class="pleT" rows="3" style="${ei};min-width:260px">${esc(x.t)}</textarea>`:esc(x.t)}</td><td>${x.mr&&x.mr.pdf?`<button class="btn sm" data-act="mrpdf" data-id="${esc(x.mr.id)}">View</button> <button class="btn sm" data-act="mrpdfdl" data-id="${esc(x.mr.id)}">Download</button>`:''}${plEvFiles(x)}${x.eid?` <button class="btn sm danger" data-act="plevdel" data-id="${esc(sel)}" data-eid="${esc(x.eid)}">Remove</button>`:''}${ed&&x.ek?` <button class="btn sm danger" data-act="plehide" data-id="${esc(sel)}" data-ek="${esc(x.ek)}">Remove</button>`:''}${ed&&x.edited?` <button class="btn sm" data-act="plereset" data-id="${esc(sel)}" data-ek="${esc(x.ek)}">Reset</button>`:''}</td></tr>`}).join(''):'<tr><td colspan="6" class="empty">Nothing logged for this project yet.</td></tr>'}</tbody></table></div>${F.ple===sel?`<div class="actions" style="margin:8px 0 16px"><button class="btn" data-act="plenew" data-id="${esc(sel)}">+ Add row</button>${Object.values((projRec(sel)||{}).logEdits||{}).some(v=>v&&v.hidden)?`<button class="btn" data-act="plerestore" data-id="${esc(sel)}">Restore removed rows</button>`:''}<button class="btn pri" data-act="plesave" data-id="${esc(sel)}">Save changes</button><button class="btn" data-act="pledit" data-id="${esc(sel)}">Cancel</button></div>`:''}`+plAddPanel(sel)+plFilesPanel(sel)+frPanel(sel,'plog')+mrPanel(mrsProject(sel),'Material requisitions for project '+sel+' (PDF copies)');
     }
     const closed=sel&&projClosed(sel);
-    const sumRows=codes.map(c=>{const r=projRec(c)||{},u=unitsOn(c)[0]||{},cl=r.customer||u.customer||'',dO=r.dateOut||u.dateOut||'',dB=r.dueBack||u.dueBack||'';return `<tr class="eqrow" tabindex="0" data-act="plopen" data-id="${esc(c)}"><td>${esc(cl||'—')}</td><td><span class="code">${esc(c)}</span></td><td>${dO?fd(dO):'—'}</td><td>${dB?fd(dB):'—'}</td><td>${projClosed(c)?'<span class="chip off">Closed</span>':'<span class="chip ok">Open</span>'}</td></tr>`}).join('');
-    body=`<label class="f"><span>Project code</span><select id="plSel" aria-label="Choose a project code"><option value="">${codes.length?'All projects…':'No project codes yet'}</option>${codes.map(c=>`<option value="${esc(c)}" ${c===sel?'selected':''}>${esc(projOpt(c))}${projClosed(c)?' (closed)':''}</option>`).join('')}</select></label>
-    ${sel?`<div class="actions"><span class="chip ${closed?'off':'ok'}">${closed?'Closed':'Open'}</span> ${closed?`<button class="btn" data-act="projopen" data-id="${esc(sel)}">Reopen project</button>`:`<button class="btn danger" data-act="projclose" data-id="${esc(sel)}">${confirmDel&&F.pd==='close'?'Click again to close this project':'Close project'}</button>`}<button class="btn pri" data-act="plpdf" data-id="${esc(sel)}">Print log (PDF)</button><button class="btn danger" data-act="logdel" data-id="${esc(sel)}">${confirmDel&&F.pd==='log'?'Click again to delete the log':'Delete log'}</button><button class="btn danger" data-act="projdel" data-id="${esc(sel)}">${confirmDel&&F.pd==='proj'?'Click again to delete this project':'Delete project'}</button><span class="hint" style="align-self:center">A project stays open until you close it, even with no equipment on it.</span></div>${log}`:`<div class="tablewrap"><table class="eqtable"><thead><tr><th>Client</th><th>Project code</th><th>Date out</th><th>Date back</th><th>Status</th></tr></thead><tbody>${sumRows||'<tr><td colspan="5" class="empty">No projects yet.</td></tr>'}</tbody></table></div>`}`;
+    const pst=F.pst==='open'||F.pst==='closed'?F.pst:'';const fcodes=codes.filter(c=>!pst||(pst==='closed')===!!projClosed(c));
+    const sumRows=fcodes.map(c=>{const r=projRec(c)||{},u=unitsOn(c)[0]||{},cl=r.customer||u.customer||'',dO=r.dateOut||u.dateOut||'',dB=r.dueBack||u.dueBack||'';return `<tr class="eqrow" tabindex="0" data-act="plopen" data-id="${esc(c)}"><td>${esc(cl||'—')}</td><td><span class="code">${esc(c)}</span></td><td>${dO?fd(dO):'—'}</td><td>${dB?fd(dB):'—'}</td><td>${projClosed(c)?'<span class="chip off">Closed</span>':'<span class="chip ok">Open</span>'}</td></tr>`}).join('');
+    body=`<div class="actions" style="align-items:flex-end"><label class="f"><span>Project code</span><select id="plSel" aria-label="Choose a project code"><option value="">${fcodes.length?'All projects…':'No project codes'}</option>${fcodes.map(c=>`<option value="${esc(c)}" ${c===sel?'selected':''}>${esc(projOpt(c))}${projClosed(c)?' (closed)':''}</option>`).join('')}</select></label><label class="f"><span>Project status</span><select id="plSt" aria-label="Open or closed projects"><option value="" ${!pst?'selected':''}>Open &amp; closed</option><option value="open" ${pst==='open'?'selected':''}>Open projects</option><option value="closed" ${pst==='closed'?'selected':''}>Closed projects</option></select></label></div>
+    ${sel?`<div class="actions"><button class="btn uni" data-act="pledit" data-id="${esc(sel)}">${F.ple===sel?'Done editing':'Edit project'}</button>${closed?`<button class="btn uni" data-act="projopen" data-id="${esc(sel)}">Reopen project</button>`:`<button class="btn uni" data-act="projclose" data-id="${esc(sel)}">Close project</button>`}<button class="btn uni" data-act="plpdf" data-id="${esc(sel)}">Print log (PDF)</button><button class="btn uni" data-act="projdel" data-id="${esc(sel)}">${confirmDel&&F.pd==='proj'?'Click again to delete this project':'Delete project'}</button><span class="hint" style="align-self:center">A project stays open until you close it, even with no equipment on it.</span></div>${!closed&&F.pcl===sel?plClosePanel(sel):''}${log}`:`<div class="tablewrap"><table class="eqtable"><thead><tr><th>Client</th><th>Project code</th><th>Date out</th><th>Date back</th><th>Status</th></tr></thead><tbody>${sumRows||'<tr><td colspan="5" class="empty">No projects yet.</td></tr>'}</tbody></table></div>`}`;
   } else if(tab==='projedit'){
     const p=findProj(view.key);
     if(!p) body='<div class="panel"><div class="empty">That project no longer exists.</div></div>';
@@ -2152,27 +2316,35 @@ function viewDemob(){
   </form>`;
 }
 function statusOptions(e){
-  if(e.status==='On rental'){if(view.dates)return ['On rental'];return isDown(e)?['To be assessed']:['Shutdown on site','To be assessed']}
+  if(e.status==='On rental'){if(view.dates)return ['On rental'];return isDown(e)?['To be assessed']:['Shutdown on site','Demobilise']}
   return STATUS_PICK.filter(x=>x!=='Shutdown on site'||e.status==='Shutdown on site');
 }
 const shutFields=(e,st)=>`<div id="g-shut" ${st==='Shutdown on site'?'':'hidden'} class="stack">
-    <div class="hint"><b>Shutdown on site.</b> The unit stays on rental and is logged as shut down from today until you restart it.</div>
-    ${fld('runhrs','1 · Current run hours','number',e.hours,'min="0" step="any" inputmode="decimal"')}
-    ${area('fail','2 · Brief description of failure','','maxlength="400" placeholder="What failed or what was observed"')}
-    ${fld('rptby','3 · Failure reported by','text','','autocomplete="off" placeholder="Name of the person who reported it"')}
+    <div class="hint"><b>Shutdown on site.</b> The unit stays on rental and is logged as shut down from the date below until you restart it.</div>
+    ${fld('shutDate','1 · Date of shutdown','date',today(),'max="'+today()+'"')}
+    ${fld('runhrs','2 · Current run hours','number',e.hours,'min="0" step="any" inputmode="decimal"')}
+    ${area('fail','3 · Shutdown Alarm','','maxlength="400" placeholder="What failed or what was observed"')}
+    ${fld('rptby','4 · Failure reported by','text','','autocomplete="off" placeholder="Name of the person who reported it"')}
+  </div>`;
+const demobFields=(e,st)=>`<div id="g-demob" ${st==='Demobilise'?'':'hidden'} class="stack">
+    <div class="hint"><b>Demobilise.</b> Takes the unit off the project and back to the yard. This is recorded in the equipment history and the project log.</div>
+    <div class="two">${fld('dmDate','Demobilisation date','date',today(),'')}${sel('dmStatus','Unit returns as',['Available','To be assessed','Level 1 service','Level 2 service','Level 3 service'],'To be assessed')}</div>
+    <div class="two">${fld('dmLoc','Yard location','text',e.location||'')}${fld('dmHrs','Run hours at demobilisation (optional)','number',e.hours||'','min="0" step="any"')}</div>
+    ${area('dmNote','Note (condition, damage, reason)','')}
   </div>`;
 function viewStatus(){
   const e=eq(view.id); if(!e) return viewDetail();
-  if(e.status==='On rental'&&isDown(e)&&!view.dates){const o=grpOpenDt(e)[0];if(o){view.n='restart';view.id=o.id;return viewRestart()}}
+  if(e.status==='On rental'&&isDown(e)&&!view.dates){const o=grpOpenDt(e)[0];if(o){view.n='fr';view.id=o.id;view.from='';return viewFr()}}
   const opts=statusOptions(e),cur=(view.presel&&opts.includes(view.presel))?view.presel:(opts.includes(e.status)?e.status:opts[0]);
   return `
   <button class="link back" data-act="open" data-id="${esc(e.id)}">‹ Back</button>
   <h2>${view.dates?'Update rental dates':'Change status'}</h2><div class="hint"><b>${esc(label(e))}</b> · ${idTag(e)}</div>
-  ${e.status==='On rental'&&!view.dates?`<div class="hint">${isDown(e)?'This unit is shut down on site. Restart it from the unit page when it is running again. From here it can only go to To be assessed.':'A unit on rental can only be changed to Shutdown on site or To be assessed. To return it to the yard use Demobilise on the unit page.'}</div>`:''}
+  ${e.status==='On rental'&&!view.dates?`<div class="hint">${isDown(e)?'This unit is shut down on site. Restart it from the unit page when it is running again. From here it can only go to To be assessed.':'A unit on rental can be changed to Shutdown on site or Demobilise (return it to the yard).'}</div>`:''}
   <form class="form" id="frm" autocomplete="off">
     ${sel('status','New status',opts,cur)}
     ${statusFields(e,cur,true)}
     ${shutFields(e,cur)}
+    ${demobFields(e,cur)}
     <div id="g-sell" ${cur==='Sold'?'':'hidden'} class="stack">
       <div class="hint"><b>Sell equipment.</b> The unit moves to <b>Sold</b>. It stays in the Equipment list for your records (filter by status Sold) and is left out of the counts on Home. You can reverse the sale later.</div>
       ${saleNotice(e)}
@@ -3085,6 +3257,64 @@ async function plAddEntry(code){
   const data=r?{...rowData(r),files:out,events:[...(r.events||[]),ev]}:{code,status:'Open',files:out,events:[ev]};
   if(await put('projects',r?r.id:projSlug(code),data)){toast('Added to the project log on '+fd(d));render()}
 }
+let PLR={};
+const plClosePanel=code=>{
+  const us=unitsOn(code).sort((a,b)=>a.id.localeCompare(b.id)),ei='font-size:15px;padding:8px 10px;border:2px solid var(--line);border-radius:4px;background:var(--surface);color:var(--ink);box-sizing:border-box';
+  if(!us.length)return `<div class="panel" style="padding:14px;margin:12px 0"><h2 style="font-size:22px;margin-top:0">Close project ${esc(code)}</h2><div class="hint">No equipment is on this project now.</div><div class="actions"><button class="btn pri" data-act="projcloseok" data-id="${esc(code)}">Close project</button><button class="btn" data-act="projcloseno" data-id="${esc(code)}">Cancel</button></div></div>`;
+  const rows=us.map(e=>{const down=grpOpenDt(e).length>0;return `<tr data-pcu="${esc(e.id)}"><td>${idTag(e)}</td><td>${esc(e.type||'—')}</td><td>${esc(label(e))}</td><td>${esc(e.serial||'—')}</td>${down?`<td colspan="2"><span class="chip bad">Shut down on site</span> Complete the failure report first: <button class="btn sm" data-act="go" data-v="demob" data-id="${esc(e.id)}">Demobilise</button></td>`:`<td><select class="pcSt" style="${ei}"><option value="Available">Back to yard</option><option value="To be assessed" selected>To be assessed</option></select></td><td><input type="date" class="pcD" value="${today()}" required style="${ei}"></td>`}</tr>`}).join('');
+  return `<div class="panel" style="padding:14px;margin:12px 0"><h2 style="font-size:22px;margin-top:0">Close project ${esc(code)}</h2><div class="hint">All ${us.length} unit${us.length===1?'':'s'} on this project will be demobilised back to the yard. Choose how each unit returns and the demobilisation date, then confirm.</div>
+  <div class="actions" style="align-items:flex-end;margin-bottom:8px"><label class="f"><span>Return all as</span><select id="pcAllSt" style="${ei}"><option value="">—</option><option value="Available">Back to yard</option><option value="To be assessed">To be assessed</option></select></label><label class="f"><span>Demobilisation date for all</span><input type="date" id="pcAllD" value="${today()}" style="${ei}"></label></div>
+  <div class="tablewrap"><table class="eqtable"><thead><tr><th>Equipment ID</th><th>Type</th><th>Make / Model</th><th>Serial no.</th><th>Return as</th><th>Date demobilised</th></tr></thead><tbody>${rows}</tbody></table></div>
+  <div class="actions" style="margin-top:10px"><button class="btn pri" data-act="projcloseok" data-id="${esc(code)}">Demobilise all &amp; close project</button><button class="btn" data-act="projcloseno" data-id="${esc(code)}">Cancel</button></div></div>`};
+async function plCloseConfirm(code){
+  const rows=[...document.querySelectorAll('tr[data-pcu]')];
+  if(unitsOn(code).some(e=>grpOpenDt(e).length))return toast('A unit is shut down on site. Complete its failure report and demobilise it first.');
+  const todo=[];
+  for(const tr of rows){const d=(tr.querySelector('.pcD')||{}).value,st=(tr.querySelector('.pcSt')||{}).value;if(!d)return toast('Enter the demobilisation date for '+tr.dataset.pcu+'.');todo.push({id:tr.dataset.pcu,d,st})}
+  let n=0;
+  for(const t of todo){const e=eq(t.id);if(!e||e.status!=='On rental')continue;
+    const was=e.project?'project '+e.project+(e.customer?' · '+e.customer:''):(e.customer||'rental');
+    await put('equipment',e.id,{...rowData(e),...blankRental,status:t.st,customer:'',project:'',dateOut:'',dueBack:'',location:e.location||'',history:hist(e,'Demobilised from '+was+' on '+fd(t.d)+' · now '+t.st,t.d)});n++}
+  const r=projRec(code);
+  if(await put('projects',r?r.id:projSlug(code),{...(r?rowData(r):{}),code:r?r.code:code,status:'Closed',closedOn:today(),events:[...((r&&r.events)||[]),{d:today(),t:'Project closed'+(n?' · '+n+' unit'+(n===1?'':'s')+' demobilised':'')}]})){F.pcl='';toast('Project '+code+' closed'+(n?' · '+n+' unit'+(n===1?'':'s')+' demobilised':''));render()}
+}
+const PL_EI='font-size:14px;padding:6px 8px;border:2px solid var(--accent);border-radius:4px;background:var(--surface);color:var(--ink);width:100%;box-sizing:border-box';
+function plNewRow(){
+  const tb=document.querySelector('.eqtable tbody');if(!tb)return;
+  const em=tb.querySelector('td.empty');if(em)em.closest('tr').remove();
+  const tr=document.createElement('tr');tr.setAttribute('data-plenew','1');
+  tr.innerHTML=`<td><input type="date" class="pleD" value="${today()}" style="${PL_EI};min-width:140px"></td><td><input class="pleK" list="plKinds" placeholder="Type" value="Note" style="${PL_EI};min-width:100px"><datalist id="plKinds"><option>Note</option><option>Delivery</option><option>Shutdown</option><option>Restart</option><option>Demobilise</option><option>Maintenance</option><option>Equipment</option><option>Project</option></datalist></td><td><input class="pleL" placeholder="Location" style="${PL_EI};min-width:120px"></td><td>—</td><td><textarea class="pleT" rows="3" placeholder="Entry" style="${PL_EI};min-width:260px"></textarea></td><td><button class="btn sm danger" data-act="plenewrm">Remove</button></td>`;
+  tb.insertBefore(tr,tb.firstChild);tr.querySelector('.pleT').focus();
+}
+async function plEditHide(code,ek){
+  const r=projRec(code);if(!r&&!ek)return;
+  const le={...((r&&r.logEdits)||{})};le[ek]={hidden:true};
+  if(await put('projects',r?r.id:projSlug(code),r?{...rowData(r),logEdits:le}:{code,status:'Open',logEdits:le})){toast('Row removed');render()}
+}
+async function plEditRestore(code){
+  const r=projRec(code);if(!r||!r.logEdits)return;
+  const le={};Object.entries(r.logEdits).forEach(([k,v])=>{if(!(v&&v.hidden))le[k]=v});
+  if(await put('projects',r.id,{...rowData(r),logEdits:le})){toast('Removed rows restored');render()}
+}
+async function plEditSave(code){
+  const r=projRec(code),evs=(r&&r.events||[]).map(e=>({...e})),le={...((r&&r.logEdits)||{})};let n=0;
+  document.querySelectorAll('tr[data-ple]').forEach(tr=>{
+    const key=tr.dataset.ple,x=PLR[key];if(!x)return;
+    const d=tr.querySelector('.pleD').value||x.d,loc=tr.querySelector('.pleL').value.trim(),t=tr.querySelector('.pleT').value.trim()||x.t;
+    if(d===x.d&&loc===(x.loc||'')&&t===x.t)return;
+    if(x.eid){const e=evs.find(v=>v.id===x.eid);if(e){e.d=d;e.loc=loc;e.t=t;n++}}
+    else if(x.ek&&x.o){if(d===x.o.d&&loc===x.o.loc&&t===x.o.t)delete le[x.ek];else le[x.ek]={d,loc,t};n++}});
+  const nr=[...document.querySelectorAll('tr[data-plenew]')];let i=0;
+  nr.forEach(tr=>{const t=tr.querySelector('.pleT').value.trim();if(!t)return;
+    evs.push({id:'pe'+Date.now()+'_'+(i++),at:today(),d:tr.querySelector('.pleD').value||today(),kind:tr.querySelector('.pleK').value.trim()||'Note',loc:tr.querySelector('.pleL').value.trim(),t});n++});
+  if(!n){F.ple='';render();return toast('No changes to save')}
+  if(await put('projects',r?r.id:projSlug(code),r?{...rowData(r),events:evs,logEdits:le}:{code,status:'Open',events:evs,logEdits:le})){F.ple='';toast(n+' log entr'+(n===1?'y':'ies')+' updated');render()}
+}
+async function plEditReset(code,ek){
+  const r=projRec(code);if(!r||!r.logEdits||!r.logEdits[ek])return;
+  const le={...r.logEdits};delete le[ek];
+  if(await put('projects',r.id,{...rowData(r),logEdits:le})){toast('Original entry restored');render()}
+}
 async function plEvDel(code,eid){
   const r=projRec(code),x=r&&(r.events||[]).find(v=>v.id===eid);if(!x)return;
   const ks=String(x.fk||'').split(',').filter(Boolean);
@@ -3180,11 +3410,14 @@ function projLogEvents(sel){
         else if(pd.end)ev.push({d:pd.end,t:'Project '+sel+' · End date: '+fd(pd.end)+(pd.val?' · Validity period: '+pd.val:''),ref:sel,kind:'Project'})}
       mrsForProj(sel).forEach(m=>ev.push({d:m.date||'',t:'MR '+m.no+' raised · '+(m.items||[]).length+' item'+((m.items||[]).length===1?'':'s')+' · '+(m.project||'')+' · due '+(m.due?fd(m.due):'—'),ref:m.no,loc:m.dest||'',kind:'MR',mr:m}));
       {const rf=(projRec(sel)||{}).files||[];((projRec(sel)||{}).events||[]).forEach(x=>ev.push({d:x.d,t:x.t,ref:sel,loc:x.loc||'',kind:x.kind||'Project',eid:x.id,at:x.at,files:x.fk?String(x.fk).split(',').map(k=>rf.find(f=>f.key===k)).filter(Boolean):[]}))}
+      {const le=(projRec(sel)||{}).logEdits||{};
+        ev.forEach(x=>{if(x.eid||x.mr)return;x.ek=[x.kind,x.d,x.ref,x.t].join('|');x.o={d:x.d,t:x.t,loc:x.loc||''};const o=le[x.ek];if(o&&!o.hidden){x.d=o.d||x.d;x.t=o.t||x.t;x.loc=o.loc!=null?o.loc:x.loc;x.edited=true}if(o&&o.hidden)x.hide=true});for(let i=ev.length-1;i>=0;i--)if(ev[i].hide)ev.splice(i,1)}
       ev.sort((a,b)=>b.d.localeCompare(a.d));
       const lf=(projRec(sel)||{}).logFrom;
       const fin=lf?ev.filter(x=>(x.at||x.d||'')>=lf):ev,seenK=new Set();
       return fin.filter(x=>{if(!x.grp)return true;const kk=[x.d,x.kind,x.ref,x.t].join('|');if(seenK.has(kk))return false;seenK.add(kk);return true});
 }
+const plProjKey=code=>{const k=String(code).toLowerCase(),p=activeProjects().find(x=>String(x.project).toLowerCase()===k);return p?p.key:'idle:'+code};
 const findProj=key=>{const p=activeProjects().find(x=>x.key===key);if(p)return p;if(String(key).startsWith('idle:')){const code=key.slice(5),r=projRec(code)||{};return {key,customer:r.customer||'',project:code,dateOut:r.dateOut||'',dueBack:r.dueBack||'',duration:r.duration||'',durUnit:r.durUnit||'',shift:r.shift||'',operator:r.operator||'',fuel:r.fuel||'',fuelQty:r.fuelQty||'',units:[]}}return null};
 const projClient=code=>{const k=String(code||'').trim().toLowerCase(),r=projRec(code);if(r&&r.customer)return r.customer;
   const u=S.equipment.find(e=>(e.project||'').trim().toLowerCase()===k&&e.customer);if(u)return u.customer;
@@ -3298,7 +3531,7 @@ window.addEventListener('message',ev=>{
   const d=ev.data;if(!d)return;
   const fw=document.getElementById('laingframe')?.contentWindow,ew=laingEng&&laingEng.contentWindow;
   if(ev.source!==fw&&ev.source!==ew)return;
-  if(d.type==='laing-certs'&&!db&&Array.isArray(d.items)&&ev.source===fw){const prevC=(S.certificates||[]).slice();S.certificates=d.items;persistLocal();fsSchedule();try{laingLog(prevC,d.items)}catch(x){}}
+  if(d.type==='laing-certs'&&AUTH.can('write')&&!db&&Array.isArray(d.items)&&ev.source===fw){const prevC=(S.certificates||[]).slice();S.certificates=d.items;persistLocal();fsSchedule();try{laingLog(prevC,d.items)}catch(x){}}
   if(d.type==='laing-pdf'&&d.buf){if(ev.source===fw)ev.source.postMessage({type:'laing-pdf-ok'},'*');else{clearTimeout(laingTimer);laingReq++;}showPdfBlob(new Blob([d.buf],{type:'application/pdf'}),d.name)}
   if(d.type==='laing-pdf-fail'){clearTimeout(laingTimer);toast('Could not build the PDF in this browser. Open Laing Certification and use Print.')}
 });
@@ -3310,7 +3543,32 @@ function viewLaing(){
   setTimeout(()=>{const f=document.getElementById('laingframe');if(f&&!f.dataset.ready){f.dataset.ready='1';f.addEventListener('load',pushLaing);f.srcdoc=new TextDecoder().decode(Uint8Array.from(atob(LAING_B64),c=>c.charCodeAt(0)))}},0);
   return `<h2>Laing Certification</h2><div class="laingwrap"><iframe id="laingframe" title="Laing Certification register"></iframe></div>`;
 }
-const FORMS=new Set(['histedit','histall','fredit','restart','laing','foform','persform','perscert','perscerts','sell','add','edit','status','demob','install','skidform','ticket','ticketnew','down','cert']);
+const FORMS=new Set(['histedit','histall','fr','fredit','restart','laing','foform','persform','perscert','perscerts','sell','add','edit','status','demob','install','skidform','ticket','ticketnew','down','cert']);
+/* Keeps the page title, tabs, counters and filters at the top of the page while the rest scrolls (the header bar is already sticky). */
+function freezeTop(){
+  const hd=document.querySelector('header.top');if(hd)document.documentElement.style.setProperty('--hdrh',hd.offsetHeight+'px');
+  const app=document.getElementById('app');if(!app)return;
+  let root=app.firstElementChild&&app.firstElementChild.classList.contains('lcv')?app.firstElementChild:app;
+  const hm=app.querySelector('.homeMain');if(hm)root=hm;
+  const keep=el=>el.matches('h2,h3.pgt,.tabs,.cnts,.filters,.hint,.fbar,.strip,.typebar,.link.back,.actions,[role="tablist"]')||(el.tagName==='DIV'&&el.firstElementChild&&el.firstElementChild.tagName==='H2');
+  const lead=[];for(const el of root.children){if(!keep(el))break;lead.push(el)}
+  if(!lead.length)return;
+  const w=document.createElement('div');w.className='freeze';root.insertBefore(w,lead[0]);lead.forEach(el=>w.appendChild(el));
+  w._lead=lead;
+  freezeFit(w);
+}
+/* freeze as much of the top block as fits in about a third of the screen; the rest scrolls normally */
+function freezeFit(w){
+  const lead=w._lead||[...w.children],lim=window.innerHeight*0.38;
+  const after=[...(w._out||[])];
+  w.classList.remove('nofreeze');
+  while(w.offsetHeight>lim&&w.children.length>1){const el=w.lastElementChild;after.unshift(el);w.parentNode.insertBefore(el,w.nextSibling)}
+  /* put back anything that now fits */
+  w._out=after;
+  while(w._out.length){const el=w._out[0];w.appendChild(el);if(w.offsetHeight>lim&&w.children.length>1){w.parentNode.insertBefore(el,w.nextSibling);break}w._out.shift()}
+  if(w.offsetHeight>lim)w.classList.add('nofreeze');
+}
+addEventListener('resize',()=>{const hd=document.querySelector('header.top');if(hd)document.documentElement.style.setProperty('--hdrh',hd.offsetHeight+'px');const w=document.querySelector('.freeze');if(w)freezeFit(w)});
 function render(){
   if(!booted||(db&&Object.keys(seen).length<COLS.length)){$('#app').innerHTML='<div class="panel"><div class="empty">Loading your records…</div></div>';return}
   const n=view.n;
@@ -3318,7 +3576,7 @@ function render(){
   $('#app').innerHTML=(['home','laing'].includes(n)||/class="lc"/.test(body))?body:'<div class="lcv">'+body+'</div>';
   const act=S.equipment.filter(e=>!gone(e)).length;
   $('#sub').textContent=act?`${act} unit${act===1?'':'s'} · ${S.skids.filter(k=>!k.retired).length} skid${S.skids.length===1?'':'s'}`:'';if(typeof SRV!=='undefined'&&SRV.on)$('#sub').textContent+=(act?' · ':'')+'Auto-save on';
-  projFlag();frImgs();tkToggle();pcRefresh();
+  projFlag();frImgs();tkToggle();pcRefresh();freezeTop();
   {const tn=$('#tnav');if(tn)tn.innerHTML=topNav(n);const il=$('#inslist');if(il)il.innerHTML=inspList().map(x=>`<option value="${esc(x)}"></option>`).join('')}
   if(noFS)document.querySelectorAll('.descta').forEach(autoDesc);
   const q=$('#q'); if(q&&F.q){q.focus();q.setSelectionRange(F.q.length,F.q.length)}
@@ -3326,8 +3584,9 @@ function render(){
   const pq=$('#pq'); if(pq&&F.pq){pq.focus();pq.setSelectionRange(F.pq.length,F.pq.length)}
   const mq=$('#mq'); if(mq&&F.mq){mq.focus();mq.setSelectionRange(F.mq.length,F.mq.length)}
   const cq=$('#cq'); if(cq&&F.cq){cq.focus();cq.setSelectionRange(F.cq.length,F.cq.length)}
+  AUTH.apply();
 }
-function go(n,o={}){if(n==='status'&&!o.dates){const ue=eq(o.id);if(ue&&isRepair(ue.status)){const oj=openJobFor(ue.id);toast('Status is locked while the unit is in service or to be assessed. Change it from the job card.');if(oj){n='ticket';o={id:oj.id}}else{n='ticketnew';o={id:ue.id}}}}if(n==='ticketnew'){const oj=openJobFor(o.id);if(oj){toast('Job card '+oj.id+' is already open for '+o.id+'. Edit or close it before opening another.');n='ticket';o={id:oj.id}}}view={n,...o};confirmDel=false;if(n==='ticket'||n==='ticketnew'){pend={load:[],docs:[]};rem=new Set()}render();window.scrollTo(0,0)}
+function go(n,o={}){if(!AUTH.allowView(n,o)){toast('Your login does not allow that page.');return}if(n==='status'&&!o.dates){const ue=eq(o.id);if(ue&&isRepair(ue.status)){const oj=openJobFor(ue.id);toast('Status is locked while the unit is in service or to be assessed. Change it from the job card.');if(oj){n='ticket';o={id:oj.id}}else{n='ticketnew';o={id:ue.id}}}}if(n==='ticketnew'){const oj=openJobFor(o.id);if(oj){toast('Job card '+oj.id+' is already open for '+o.id+'. Edit or close it before opening another.');n='ticket';o={id:oj.id}}}view={n,...o};confirmDel=false;if(n==='ticket'||n==='ticketnew'){pend={load:[],docs:[]};rem=new Set()}render();window.scrollTo(0,0)}
 
 /* ---------- events ---------- */
 const DEL_CODE='1068',DELACTS=new Set(['plevdel','plfrem','mrreopen','delete','fodel','logdel','mrdel','persdel','projdel','certrm','pdfrem','restore','fsload','fsreplace','msload','msreplace']),NOCONF=new Set(['plevdel','plfrem','mrreopen','certrm','pdfrem','restore','fsload','fsreplace','msload','msreplace']);
@@ -3340,7 +3599,8 @@ function askDelCode(msg){return new Promise(res=>{
 document.addEventListener('click',async ev=>{
   const b=ev.target.closest('[data-act]'); if(!b) return;
   const a=b.dataset.act,id=b.dataset.id;
-  if(DELACTS.has(a)&&(confirmDel||NOCONF.has(a))){if(!(await askDelCode(a==='mrreopen'?'Reopening a closed MR needs your code.':undefined))){if(!NOCONF.has(a)){confirmDel=false;render()}toast('Nothing was changed.');return}}
+  if(!AUTH.allowAct(a,b)){toast('Your login does not allow that.');return}
+  if(DELACTS.has(a)&&(confirmDel||NOCONF.has(a))&&!(AUTH.role()!=='admin'&&(a==='msload'||a==='fsload'))){if(!(await askDelCode(a==='mrreopen'?'Reopening a closed MR needs your code.':undefined))){if(!NOCONF.has(a)){confirmDel=false;render()}toast('Nothing was changed.');return}}
   if(a==='home') go('home');
   else if(a==='list'){go('list')}
   else if(a==='sales'){go('sales',{tab:'rentals'})}
@@ -3365,13 +3625,19 @@ document.addEventListener('click',async ev=>{
   else if(a==='laingpdf'){await viewLaingPdf(id)}
   else if(a==='plfrem'){await plRemoveFile(id,b.dataset.key)}
   else if(a==='pladd'){await plAddEntry(id)}
+  else if(a==='pledit'){F.ple=F.ple===id?'':id;render()}
+  else if(a==='plesave'){await plEditSave(id)}
+  else if(a==='plenew'){plNewRow()}
+  else if(a==='plenewrm'){const tr=b.closest('tr');if(tr)tr.remove()}
+  else if(a==='plehide'){await plEditHide(id,b.dataset.ek)}
+  else if(a==='plerestore'){await plEditRestore(id)}
+  else if(a==='plereset'){await plEditReset(id,b.dataset.ek)}
   else if(a==='plevdel'){await plEvDel(id,b.dataset.eid)}
   else if(a==='plpdf'){try{showPdfBlob(projLogPdf(id),'Project-log-'+projSlug(id))}catch(e){toast('Could not create the PDF.')}}
-  else if(a==='plopen'){F.pl=id;go('sales',{tab:'plog'})}
-  else if(a==='projclose'){
-    const n=unitsOn(id).length;if(n)return toast(n+' unit'+(n>1?'s are':' is')+' still on this project. Demobilise '+(n>1?'them':'it')+' first.');
-    if(!confirmDel||F.pd!=='close'){confirmDel=true;F.pd='close';render();return}confirmDel=false;F.pd='';
-    const r=projRec(id);if(await put('projects',r?r.id:projSlug(id),{...(r?rowData(r):{}),code:r?r.code:id,status:'Closed',closedOn:today(),events:[...((r&&r.events)||[]),{d:today(),t:'Project closed'}]})){toast('Project '+id+' closed');render()}}
+  else if(a==='plopen'){F.pl=id;F.pst='';F.ple='';F.pcl='';go('sales',{tab:'plog'})}
+  else if(a==='projclose'){F.pcl=F.pcl===id?'':id;render()}
+  else if(a==='projcloseno'){F.pcl='';render()}
+  else if(a==='projcloseok'){await plCloseConfirm(id)}
   else if(a==='projdel'){
     const n=unitsOn(id).length;if(n)return toast(n+' unit'+(n>1?'s are':' is')+' still on this project. Demobilise '+(n>1?'them':'it')+' first.');
     if(!confirmDel||F.pd!=='proj'){confirmDel=true;F.pd='proj';render();return}confirmDel=false;F.pd='';
@@ -3483,6 +3749,7 @@ document.addEventListener('click',async ev=>{
   else if(a==='downnew') go('down',{eq:id});
   else if(a==='downedit') go('down',{id});
   else if(a==='restart'){ if(S.downtime.some(x=>x.id===id)) go('restart',{id}); }
+  else if(a==='frclose'){frClose=true;const fm=document.getElementById('frm');if(fm&&fm.requestSubmit){fm.requestSubmit();setTimeout(()=>{frClose=false},3000)}else{frClose=false}}
   else if(a==='recadd'){ const box=document.getElementById((b.dataset.pf||'')+'recs'); if(box){ const n=box.querySelectorAll('.recrow').length+1; box.insertAdjacentHTML('beforeend',recRow(b.dataset.pf||'',n,'')); const i=box.querySelector('.recrow:last-child input'); if(i)i.focus() } }
   else if(a==='recdel'){ const row=b.closest('.recrow'),box=row&&row.parentElement; if(row&&box){ if(box.querySelectorAll('.recrow').length<=1){ const i=row.querySelector('input'); if(i){i.value='';i.focus()} } else { row.remove(); box.querySelectorAll('.recrow').forEach((r,k)=>{ r.querySelector('.recn').textContent='#'+(k+1); r.querySelector('input').placeholder='Recommendation #'+(k+1) }) } } }
   else if(a==='pcadd'){
@@ -3547,7 +3814,7 @@ document.addEventListener('click',async ev=>{
   }
 });
 document.addEventListener('submit',async ev=>{
-  if(ev.target.getAttribute('id')!=='frm') return; ev.preventDefault(); await submit(ev.target);
+  if(ev.target.getAttribute('id')!=='frm') return; ev.preventDefault(); if(!AUTH.can('write')){toast('Your login is view-only.');return} await submit(ev.target);
 });
 async function saveMr(f,stay){
     const old=view.id?S.mrs.find(x=>x.id===view.id):null;
@@ -3635,19 +3902,31 @@ async function submit(f){
     toast('History updated'+(dt?' · failure report updated':''));go('open',{id:e.id});
     return;
   }
-  if(n==='fredit'){
+  if(n==='fredit'||n==='fr'){
     const r=S.downtime.find(x=>x.id===view.id); if(!r) return toast('Failure report not found.');
     if(frBusy) return;
     const sb=f.querySelector('button[type="submit"]'),sbT=sb&&sb.textContent,rel=()=>{frBusy=false;if(sb){sb.disabled=false;sb.textContent=sbT}};
     frBusy=true;if(sb){sb.disabled=true;sb.textContent='Saving…'}
-    const steps=[...f.querySelectorAll('input[name="ts_"]')].map(i=>i.value.trim()).filter(Boolean);
+    const closing=frClose?val(f,'cnext'):'';
+    const wc=whyCollect(f,'e'),whys=wc.whys;if(wc.err){rel();frClose=false;return toast(wc.err)}
+    if(frClose){
+      const bad=!closing?'Choose Restart on site or Demobilize back to Laing Workshop to close the report.':!val(f,'tech')?'Enter the technician assigned to repair before closing the report.':!whys.length?'Enter at least the first "Why it failed" before closing the report.':'';
+      if(bad){rel();frClose=false;return toast(bad)}
+      const sdS=(f.elements.sdStart?val(f,'sdStart'):r.start)||r.start;
+      if(closing==='restart'){const rd=val(f,'cDate')||today();if(rd>today()){rel();frClose=false;return toast('The restart date cannot be in the future.')}if(sdS&&rd<sdS){rel();frClose=false;return toast('The restart date is before the shutdown date ('+fd(sdS)+').')}}
+      else{const yd=val(f,'cyDate');if(!yd){rel();frClose=false;return toast('Enter the demobilisation date.')}if(sdS&&yd<sdS){rel();frClose=false;return toast('The demobilisation date is before the shutdown date ('+fd(sdS)+').')}}
+    }
     const recs=[...f.querySelectorAll('input[name="erec_"]')].map(i=>i.value.trim()).filter(Boolean);
     const rm=new Set([...f.querySelectorAll('input[name="rmph"]:checked')].map(i=>i.value));
-    const keep=(r.photos||[]).filter(p=>!rm.has(p.key)),inp=f.querySelector('input[name="ephotos"]'),files=inp&&inp.files?[...inp.files]:[];
+    const keep=(r.photos||[]).filter(p=>!rm.has(p.key)),inp=f.querySelector('input[name="ephotos"]'),files=[...(inp&&inp.files?[...inp.files]:[]),...wc.files];
     if(files.length)toast('Saving '+files.length+' picture'+(files.length===1?'':'s')+'…');
     let photos;try{photos=await frStorePhotos(r.id,files,keep)}catch(x){rel();return toast(x.message||'Could not store the pictures.')}
-    const ok=await put('downtime',r.id,{...rowData(r),failureReason:val(f,'cause'),failureParts:val(f,'parts'),corrective:val(f,'fix'),techAssigned:val(f,'tech'),troubleshooting:steps,recommendations:recs,recommendation:recsJoin(recs),photos});
-    if(ok){for(const p of (r.photos||[])){if(rm.has(p.key))IDB.del(p.key).catch(()=>{})}frBusy=false;toast('Failure report updated');go('fr',{id:r.id,from:view.from||''})}else rel();
+    const shut={};if(f.elements.sdStart){shut.start=val(f,'sdStart')||r.start;shut.hoursAt=val(f,'sdHrs');shut.reportedBy=val(f,'sdBy');shut.note=val(f,'sdNote')}
+    if(shut.start&&shut.start>today()){rel();frClose=false;return toast('The shutdown date cannot be in the future.')}
+    if(shut.start&&r.end&&shut.start>r.end){rel();frClose=false;return toast('The shutdown date is after the restart date ('+fd(r.end)+').')}
+    const ok=await put('downtime',r.id,{...rowData(r),...shut,failureReason:recsJoin(whys),whys,techAssigned:val(f,'tech'),recommendations:recs,recommendation:recsJoin(recs),photos});
+    if(ok&&closing){try{await frHistSave(S.downtime.find(q=>q.id===r.id)||r,whys,val(f,'tech'),r.failureParts||'',recs,photos.length)}catch(er){}const done=await frRelease(S.downtime.find(q=>q.id===r.id)||r,f,whys,closing);frClose=false;if(done){frBusy=false;go('fr',{id:r.id,from:view.from||''});return}}
+    if(ok){for(const p of (r.photos||[])){if(rm.has(p.key))IDB.del(p.key).catch(()=>{})}try{await frHistSave(S.downtime.find(q=>q.id===r.id)||r,whys,val(f,'tech'),r.failureParts||'',recs,photos.length)}catch(er){}frBusy=false;toast('Failure report saved · added to the equipment and project history');go('fr',{id:r.id,from:view.from||''})}else rel();
     return;
   }
   if(n==='add'){
@@ -3793,6 +4072,7 @@ async function submit(f){
   }
   else if(n==='status'){
     const e=eq(view.id),st=val(f,'status');
+    if(e&&e.status==='On rental'&&st==='Demobilise'){view.n='demob';view.id=e.id;return submit(f)}
     if(e&&isRepair(e.status)) return toast('Status is locked while the unit is in service or to be assessed. Change it from the job card.');
     if(st==='Sold'){
       if(!val(f,'buyer')) return toast('Enter who it was sold to.');
@@ -3809,9 +4089,12 @@ async function submit(f){
       if(prev!==''&&prev!=null&&!isNaN(Number(prev))&&Number(hrs)<Number(prev)) return toast('Run hours cannot be lower than the last recorded '+prev+' hrs. Check the meter reading.');
       if(!fail) return toast('Enter a brief description of the failure.');
       if(!rpt) return toast('Enter who reported the failure.');
+      const sd=val(f,'shutDate')||today();
+      if(sd>today()) return toast('The shutdown date cannot be in the future.');
+      if(e.dateOut&&sd<e.dateOut) return toast('The shutdown date is before the rental start date ('+fd(e.dateOut)+').');
       const note=val(f,'note');
-      if(await put('downtime',nextDid(),{equip:e.id,customer:e.customer||'',project:e.project||'',start:today(),end:'',reason:'Equipment fault',party:'',billable:'',hoursAt:hrs,reportedBy:rpt,note:fail,frNo:nextFr()})){
-        await put('equipment',e.id,{...rowData(e),hours:hrs,history:hist(e,'Shutdown on site — '+fail+' (reported by '+rpt+' · '+hrs+' run hrs)'+(note?' — '+note:''))});await grpNote(e,'Shutdown on site — '+fail+' (reported by '+rpt+' · '+hrs+' run hrs)'+(note?' — '+note:''));toast('Shutdown on site logged');go('open',{id:e.id})}
+      if(await put('downtime',nextDid(),{equip:e.id,customer:e.customer||'',project:e.project||'',start:sd,end:'',reason:'Equipment fault',party:'',billable:'',hoursAt:hrs,reportedBy:rpt,note:fail,frNo:nextFr()})){
+        await put('equipment',e.id,{...rowData(e),hours:hrs,history:hist(e,'Shutdown on site — '+fail+' (reported by '+rpt+' · '+hrs+' run hrs)'+(note?' — '+note:''),sd)});await grpNote(e,'Shutdown on site — '+fail+' (reported by '+rpt+' · '+hrs+' run hrs)'+(note?' — '+note:''),sd);toast('Shutdown on site logged');go('open',{id:e.id})}
       return;
     }
     const openDt=grpOpenDt(e),fr=(openDt.length&&st!=='On rental')?frRead(f,'s'):null;
@@ -3852,12 +4135,12 @@ async function submit(f){
     const rdate=val(f,'rDate')||today();
     if(next==='restart'){if(rdate>today()) return toast('The restart date cannot be in the future.');if(r.start&&rdate<r.start) return toast('The restart date is before the shutdown date ('+fd(r.start)+').')}
     if(next==='yard'){if(!dt) return toast('Enter the demobilisation date.');if(r.start&&dt<r.start) return toast('The demobilisation date is before the shutdown date ('+fd(r.start)+').')}
-    const cause=fr.failureReason,fix=fr.corrective,tech=fr.techAssigned,frNo=r.frNo||nextFr();
+    const cause=fr.whys[fr.whys.length-1]||'',tech=fr.techAssigned,frNo=r.frNo||nextFr();
     let photos;try{photos=await frStorePhotos(r.id,fr.files,r.photos)}catch(x){return toast(x.message||'Could not store the pictures.')}
-    const detail=' — cause: '+cause+' · parts: '+fr.failureParts+' · corrective: '+fix+' · technician: '+tech+' · recommendations: '+fr.recommendations.map((q,i)=>'#'+(i+1)+' '+q).join(' ')+(photos.length?' · '+photos.length+' picture'+(photos.length===1?'':'s'):'')+' · report '+frNo;
+    const detail=' — cause: '+cause+' · technician: '+tech+' · recommendations: '+fr.recommendations.map((q,i)=>'#'+(i+1)+' '+q).join(' ')+(photos.length?' · '+photos.length+' picture'+(photos.length===1?'':'s'):'')+' · report '+frNo;
     if(next==='restart'){
       if(await put('downtime',r.id,{...rowData(r),end:rdate,...frFields(fr),photos,frNo,releasedBy:'restart',outcome:'restart',statusAfter:'On rental'})){
-        if(e){await put('equipment',e.id,{...rowData(e),status:'On rental',history:hist(e,'Restarted on site on '+fd(rdate)+' — corrective: '+fix+' · report '+frNo,rdate)});await grpNote(e,'Restarted on site on '+fd(rdate)+' — corrective: '+fix+' · report '+frNo,rdate)}
+        if(e){await put('equipment',e.id,{...rowData(e),status:'On rental',history:hist(e,'Restarted on site on '+fd(rdate)+' — cause: '+cause+' · report '+frNo,rdate)});await grpNote(e,'Restarted on site on '+fd(rdate)+' — cause: '+cause+' · report '+frNo,rdate)}
         toast('Restarted on site · failure report '+frNo+' completed');go('fr',{id:r.id,from:''});
       }
     } else {
@@ -4043,7 +4326,10 @@ document.addEventListener('change',ev=>{
   else if(t.name==='m_pri'||t.name==='m_dreq')mrSync()
   else if(t.name==='m_link'||t.name==='m_ticket'||t.name==='m_equip'||t.name==='m_projcode'||t.name==='m_newjob')mrLink()
   else if(t.id==='spSel'){F.sp=t.value;render()}
-  else if(t.id==='plSel'){F.pl=t.value;render()}
+  else if(t.id==='plSel'){F.pl=t.value;F.ple='';F.pcl='';render()}
+  else if(t.id==='pcAllSt'){if(t.value)document.querySelectorAll('.pcSt').forEach(x=>x.value=t.value)}
+  else if(t.id==='pcAllD'){if(t.value)document.querySelectorAll('.pcD').forEach(x=>x.value=t.value)}
+  else if(t.id==='plSt'){F.pst=t.value;F.pl='';F.ple='';F.pcl='';render()}
   else if(t.id==='dueType'){F.dt=t.value;render()}
   else if(t.id==='duePart'){F.dp=t.value;render()}
   else if(t.id==='seltype')pickFilter()
@@ -4060,7 +4346,9 @@ document.addEventListener('change',ev=>{
   else if(t.id==='plAdd'){const c=t.dataset.code,fl=[...t.files];t.value='';plAddFiles(c,fl)}
   else if(t.id==='frAdd'){frAddNow(t)}
   else if(/^[rdse]photos$/.test(t.id)){frPrev(t)}
+  else if(/whyph\d$/.test(t.name||'')){const sp=t.closest('.whyrow')&&t.closest('.whyrow').querySelector('.whyfn');if(sp)sp.textContent=t.files.length?'✓ '+(t.files.length===1?t.files[0].name:t.files.length+' pictures'):''}
   else if(t.id==='component'||t.id==='backAction'||t.id==='closed'||t.id==='opened'||t.id==='backDate'||t.id==='hours'){tkToggle()}
+  else if(t.name==='cnext'){const y=document.getElementById('c-yard'),rd=document.getElementById('c-restdate');if(y)y.hidden=t.value!=='yard';if(rd)rd.hidden=t.value==='yard'}
   else if(t.name==='rnext'){const af=document.getElementById('r-after');if(af)af.hidden=false;{const rp=document.getElementById('r-repair'),yd=t.value==='yard';if(rp){rp.hidden=yd;rp.querySelectorAll('[required],[data-wasreq]').forEach(i=>{if(yd){i.dataset.wasreq='1';i.required=false}else if(i.dataset.wasreq)i.required=true})}}const y=document.getElementById('r-yard');if(y)y.hidden=t.value!=='yard';const rd=document.getElementById('r-restdate');if(rd)rd.hidden=t.value==='yard'}
   else if(t.id==='xlmf'){const file=t.files[0];t.value='';if(file)xlImportFile(file)}
   else if(t.id==='rf'){
@@ -4074,7 +4362,7 @@ document.addEventListener('change',ev=>{
   else if(t.id==='status'){
     const st=t.value;
     const r=document.getElementById('g-rental'),p=document.getElementById('g-repair');
-    if(r) r.hidden=st!=='On rental'; if(p) p.hidden=!isRepair(st); {const sh=document.getElementById('g-shut');if(sh)sh.hidden=st!=='Shutdown on site'} {const sl=document.getElementById('g-sell');if(sl)sl.hidden=st!=='Sold'} projFlag();
+    if(r) r.hidden=st!=='On rental'; if(p) p.hidden=!isRepair(st); {const sh=document.getElementById('g-shut');if(sh)sh.hidden=st!=='Shutdown on site'} {const dm=document.getElementById('g-demob');if(dm)dm.hidden=st!=='Demobilise'} {const sl=document.getElementById('g-sell');if(sl)sl.hidden=st!=='Sold'} projFlag();
   }
 });
 document.addEventListener('input',ev=>{if(ev.target.name==='m_projcode'||ev.target.name==='m_newjob')mrLink();if((ev.target.id||'').startsWith('os_'))ev.target.dataset.auto='';if(ev.target.id==='os_max'){const m=+ev.target.value,w=document.getElementById('os_vrpm');if(w&&m)w.value=Math.round(m*1.1)}if(ev.target.id==='fo_nid')ev.target.dataset.touched='1';if(/^fo_(issued|val|nid)$/.test(ev.target.id||'')){osMirror();if(ev.target.id==='fo_nid')return;const g=n=>document.getElementById(n),x=certExpiry(g('fo_issued').value,g('fo_val').value,g('fo_unit').value);g('fo_x').textContent=x?'Expires on '+fd(x):'Expiry date is worked out from the issue date and validity period.'}if(ev.target.name==='m_dreq')mrSync();if(ev.target.name==='m_newjob')mrLink();if(ev.target.id==='id'&&view.n==='add')ev.target.dataset.touched='1';if(ev.target.id==='dur')autoDue();if(['hours','closed','opened'].includes(ev.target.id))tkToggle();if(/^(ci|cv)_\d+$/.test(ev.target.id))certPreview(ev.target.id.slice(3));if(ev.target.id==='backendMonths')bkHint()});
@@ -4383,6 +4671,7 @@ const fsHash=t=>{let h=5381;for(let i=0;i<t.length;i++)h=((h<<5)+h+t.charCodeAt(
 const fsFileName=k=>String(k).replace(/[^A-Za-z0-9_.\-]+/g,'_').slice(0,80)+'-'+fsHash(String(k))+'.pdf';
 const fsErr=e=>!e?'':e.name==='SecurityError'?'This window blocks folder access. Download the file and open it directly in Chrome or Edge.':e.name==='NotAllowedError'?'Permission to the folder was not granted.':e.name==='NotFoundError'?'The folder or file could not be found.':(e.message||'Could not use the folder.');
 async function fsWrite(dir,name,data){
+  if(!AUTH.can('write'))return;
   const fh=await dir.getFileHandle(name,{create:true}),w=await fh.createWritable();
   try{await w.write(data);await w.close()}catch(e){try{await w.abort()}catch(x){}throw e}
 }
@@ -4910,7 +5199,7 @@ async function xlRun(opt){
   try{await xlPull(!!opt.force);await xlPush(!!opt.push)}
   catch(e){XL.err=fsErr(e)||'Could not sync with the Excel workbook.'}
   XL.busy=false;xlUi()}
-function xlSync(opt){const run=()=>xlRun(opt||{});XL.q=(XL.q||Promise.resolve()).then(run,run);return XL.q}
+function xlSync(opt){if(!AUTH.can('write'))return Promise.resolve();const run=()=>xlRun(opt||{});XL.q=(XL.q||Promise.resolve()).then(run,run);return XL.q}
 function xlUi(){const k=[XL.lock,XL.err,XL.pulled,XL.pushed].join('|');if(k===XL.ui)return;XL.ui=k;if((view.n==='storage'||view.n==='home')&&!FORMS.has(view.n))render()}
 async function xlLoadBase(){try{const b=await META.get('xlBase');if(b&&b.snap){XL.base=b.snap;XL.mod=b.mod||0;XL.size=b.size||0;XL.fmt=true}}catch(e){}}
 function xlReset(){XL.base=null;XL.mod=0;XL.size=0;XL.fmt=false;XL.lock=false;XL.err='';XL.pulled='';XL.pushed='';XL.fail=0;try{META.del('xlBase')}catch(e){}}
@@ -4997,6 +5286,7 @@ async function msCheck(){
   MS.chk=Date.now();
 }
 async function msSaveNow(){
+  if(!AUTH.can('write'))return false;
   if(!MS.ok||MS.newer)return false;
   if(MS.busy){MS.again=true;return false}
   MS.busy=true;MS.err='';let good=false;

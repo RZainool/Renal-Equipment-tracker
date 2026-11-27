@@ -94,21 +94,8 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .btn.pri{background:var(--accent);color:var(--on-accent)}
 .btn.ghost{border-color:var(--line)}
 .btn.danger{border-color:var(--bad);color:var(--bad)}
-.plbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:12px 0 6px}
-.plbar .plb{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-width:170px;padding:11px 18px;font-size:15px;font-weight:700;letter-spacing:.2px;border-radius:8px;border-width:2px;transition:transform .08s,box-shadow .15s,background .15s,color .15s}
-.plbar .plb:hover{box-shadow:0 3px 10px rgba(0,0,0,.22);transform:translateY(-1px)}
-.plbar .plb:active{transform:none;box-shadow:none}
-.plbar .plb.edit{border-color:var(--accent);color:var(--ink)}
-.plbar .plb.edit:hover{background:var(--accent);color:var(--on-accent)}
-.plbar .plb.warn{border-color:#c98a1b;color:#c98a1b}
-.plbar .plb.warn:hover{background:#c98a1b;color:#fff}
-.plbar .plb.ok{border-color:var(--ok);color:var(--ok)}
-.plbar .plb.ok:hover{background:var(--ok);color:#fff}
-.plbar .plb.danger:hover{background:var(--bad);color:#fff}
-.plbar .plb .ic{font-size:17px;line-height:1}
-.plbar .sep{flex:1 1 20px}
-.plnote{font-size:13px;color:var(--mute,#6b7580);margin:4px 0 12px}
 .btn.sm{padding:5px 12px;min-height:34px;font-size:14px}
+.actions .btn.uni{min-width:170px;text-align:center}
 .link{background:none;border:0;color:var(--ink);font:600 15px var(--f-body);cursor:pointer;padding:6px 0;text-decoration:underline;text-underline-offset:3px}
 .big{display:flex;flex-direction:column;gap:6px;text-align:left;width:100%;padding:26px 24px 28px;border-radius:6px;border:3px solid var(--ink);cursor:pointer;color:var(--ink);background:var(--surface);min-width:0}
 .big b{font-family:var(--f-display);font-size:44px;font-weight:800;line-height:1;text-transform:uppercase;letter-spacing:.02em}
@@ -118,6 +105,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .big:hover{transform:translateY(-1px)}
 .stack{display:flex;flex-direction:column;gap:14px}
 .homeLayout{display:grid;grid-template-columns:190px minmax(0,1fr);gap:24px;align-items:start}
+.freeze{position:sticky;top:calc(env(safe-area-inset-top,0px) + var(--hdrh,64px));z-index:4;background:var(--bg);padding:4px 0 2px;box-shadow:0 6px 6px -6px rgba(0,0,0,.35)}.freeze.nofreeze{position:static;box-shadow:none}
 .sidecol{display:flex;flex-direction:column;gap:18px;position:sticky;top:12px}
 .sidenav{display:flex;flex-direction:column;gap:10px;align-items:flex-start;padding-bottom:14px;border-bottom:2px solid var(--line)}
 .sidenav a{color:var(--ink)}
@@ -292,10 +280,6 @@ body.print-os{background:#fff!important;padding:0!important}
 .cnts{display:flex;flex-wrap:wrap;gap:10px;margin:0 0 14px}
 .cnt{background:var(--lcard,var(--surface));border:1px solid var(--lbd,var(--line));border-radius:10px;padding:8px 14px;min-width:110px;color:var(--ltx,var(--ink));font-size:13px}
 .cnt b{display:block;font-size:22px;line-height:1.25}
-button.cnt{font:inherit;font-size:13px;text-align:left;cursor:pointer}
-button.cnt:hover{border-color:var(--ink)}
-button.cnt.on{border-width:2px;padding:7px 13px;box-shadow:0 0 0 2px var(--line)}
-button.cnt:focus-visible{outline:3px solid var(--info,#06c);outline-offset:2px}
 @media print{.cnts{display:none}}
 .lcv .notice,.lcv .hint{color:var(--mu)}
 
@@ -409,6 +393,95 @@ html .eqpics figcaption{font-size:12px;color:var(--muted);margin-top:4px}
 </div></dialog>
 
 <script>
+/* ---------- Sign-in and access levels (Viewer / Operator / Admin) ---------- */
+const AUTH=(function(){
+  const RANK={viewer:1,operator:2,admin:3},LABEL={viewer:'Viewer',operator:'Operator',admin:'Admin'};
+  const VIEW_ACTS=new Set('home go list open filter due tickets tkt skids storage sales salestab mrs mrtab pers persopen perscerts certs certview certdl certzip fo focertview laing laingpdf pdfview pdfdl mrpdf mrpdfdl mrrecview mrrecpdf plopen plpdf histview histpdf histdoc frview frpdf frdoc frback print printjc printmr osprint pcertpdf csv csvdown csvcerts fsconnect fsreconnect soon mssignin mssignout msload fsload'.split(' '));
+  const OPER_ACTS=new Set('certadd certedit certnew pcadd pcertadd persadd pladd foadd fosaveprint osedit mredit mropen mrrecall mrrecsave tsadd tsdel wladd wlrm recadd recdel downnew downedit restart saveone jclfill jclnow jclpick frclose projcloseok projcloseno pledit plesave plereset plenew plenewrm plehide plerestore projopen projclose salemore salesgo'.split(' '));
+  const VIEWER_NO_VIEWS=new Set(['add','edit','added','status','demob','skidform','install','down','restart','ticketnew','fredit','foform','sell','histedit','histall','perscert']);
+  const OPER_NO_VIEWS=new Set(['histedit','histall']);
+  /* Default sign-ins. Admin changes these under Account. */
+  const DEFAULTS=[['Admin','admin','1068'],['Operator','operator','2468'],['Viewer','viewer','1357']];
+  const hash=(n,p)=>{const s='laing|'+String(n).trim().toLowerCase()+'|'+p;let h1=0xdeadbeef,h2=0x41c6ce57;for(let i=0;i<s.length;i++){const c=s.charCodeAt(i);h1=Math.imul(h1^c,2654435761);h2=Math.imul(h2^c,1597334677)}h1=Math.imul(h1^(h1>>>16),2246822507)^Math.imul(h2^(h2>>>13),3266489909);h2=Math.imul(h2^(h2>>>16),2246822507)^Math.imul(h1^(h1>>>13),3266489909);return (4294967296*(2097151&h2)+(h1>>>0)).toString(36)};
+  let users=null,cur=null,fails=0,lockUntil=0;
+  const lsg=k=>{try{return localStorage.getItem(k)}catch(e){return null}},lss=(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}};
+  const ssg=k=>{try{return sessionStorage.getItem(k)}catch(e){return null}},sss=(k,v)=>{try{v==null?sessionStorage.removeItem(k):sessionStorage.setItem(k,v)}catch(e){}};
+  const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  function load(){if(users)return users;try{const a=JSON.parse(lsg('rytUsers')||'null');if(Array.isArray(a)&&a.some(u=>u.r==='admin'))users=a}catch(e){}if(!users)users=DEFAULTS.map(d=>({n:d[0],r:d[1],h:hash(d[0],d[2])}));return users}
+  const UF='rental-yard-users.json';let uAt=lsg('rytUsersAt')||'',synced=false;
+  const payload=()=>JSON.stringify({app:'rental-yard-users',updatedAt:uAt,users:users});
+  function save(){uAt=new Date().toISOString();lss('rytUsersAt',uAt);lss('rytUsers',JSON.stringify(users));push()}
+  /* Shared user list: kept beside the tracker data in OneDrive (web page) and in the connected folder, so every device has the same sign-ins. */
+  async function readShared(){const out=[];
+    try{if(typeof MS!=='undefined'&&MS.ok&&msSigned()){const d=await msGetJson([UF]);out.push({src:'ms',d})}}catch(e){}
+    try{if(typeof FS!=='undefined'&&FS.dir&&FS.ok){let d=null;try{const fh=await FS.dir.getFileHandle(UF);d=JSON.parse(await (await fh.getFile()).text())}catch(e){if(!e||e.name!=='NotFoundError')throw e}out.push({src:'fs',d})}}catch(e){}
+    return out}
+  async function push(){if(role()!=='admin')return;const j=payload();
+    try{if(typeof MS!=='undefined'&&MS.ok&&msSigned())await msPut([UF],j,'application/json')}catch(e){}
+    try{if(typeof FS!=='undefined'&&FS.dir&&FS.ok)await fsWrite(FS.dir,UF,j)}catch(e){}}
+  async function pull(){const r=await readShared();if(!r.length)return;synced=true;
+    const valid=r.filter(x=>x.d&&x.d.app==='rental-yard-users'&&Array.isArray(x.d.users)&&x.d.users.some(u=>u.r==='admin')&&x.d.updatedAt);
+    valid.sort((a,b)=>a.d.updatedAt<b.d.updatedAt?1:-1);const best=valid[0];
+    if(best&&best.d.updatedAt>uAt){users=best.d.users;uAt=best.d.updatedAt;lss('rytUsers',JSON.stringify(users));lss('rytUsersAt',uAt);revalidate();const ov=document.getElementById('authov');if(ov){ov.remove();showLogin()}}
+    else if((!best||best.d.updatedAt<uAt)&&role()==='admin'&&uAt)push()}
+  function revalidate(){if(!cur)return;let s=null;try{s=JSON.parse(ssg('rytSess')||'null')}catch(e){}const u=find(cur.n);
+    if(!u||!s||u.h!==s.h){toast('Your sign-in was changed. Please sign in again.');signOut()}else if(u.r!==cur.r){cur.r=u.r;try{render()}catch(e){}}}
+  (function tick(){setTimeout(()=>{pull().catch(()=>{}).then(tick)},synced?60000:8000)})();
+  const find=n=>load().find(u=>u.n.toLowerCase()===String(n).trim().toLowerCase());
+  const role=()=>cur?cur.r:'';
+  const rank=()=>RANK[role()]||0;
+  function allowView(n,o){o=o||{};if(!cur)return false;const r=role();if(r==='admin')return true;
+    if(VIEWER_NO_VIEWS.has(n)&&r==='viewer')return false;
+    if(OPER_NO_VIEWS.has(n)&&r!=='admin')return false;
+    if(r==='viewer'){if(n==='mr'&&o.tab==='add')return false;if(n==='sales'&&['rent','sell','saleedit','projedit'].includes(o.tab))return false;if(n==='persform'&&!o.id)return false}
+    return true}
+  function allowAct(a,b){if(!cur)return false;const r=role();if(r==='admin')return true;const d=(b&&b.dataset)||{};
+    if(a==='go')return allowView(d.v,{id:d.id});
+    if(a==='salestab')return allowView('sales',{tab:d.id});
+    if(a==='mrtab')return allowView('mr',{tab:d.id});
+    if(VIEW_ACTS.has(a))return true;
+    return r==='operator'&&OPER_ACTS.has(a)}
+  function style(){if(document.getElementById('authcss'))return;const s=document.createElement('style');s.id='authcss';s.textContent='#authov{position:fixed;inset:0;z-index:99999;background:var(--bg,#EDEFF1);display:flex;align-items:center;justify-content:center;padding:16px}#authov .card,.authdlg{background:var(--surface,#fff);color:var(--ink,#11181F);border:1px solid var(--line,#D3D8DD);border-radius:12px;padding:22px;box-sizing:border-box}#authov .card{width:100%;max-width:360px}#authov h2{margin:0 0 4px;font-size:22px}#authov label,.authdlg label{display:block;font-size:13px;margin:12px 0 4px;color:var(--muted,#56616D)}#authov input,#authov select,.authdlg input,.authdlg select{width:100%;box-sizing:border-box;font-size:17px;padding:10px;border:1px solid var(--line,#D3D8DD);border-radius:8px;background:var(--surface,#fff);color:var(--ink,#11181F)}#authov button.go,.authdlg button.go{margin-top:16px;width:100%;font-size:16px;font-weight:700;padding:12px;border:0;border-radius:8px;background:var(--accent,#FFC72C);color:var(--on-accent,#11181F);cursor:pointer}.authdlg{max-width:520px;width:94%}.authdlg table{width:100%;border-collapse:collapse;margin-top:8px;font-size:14px}.authdlg td,.authdlg th{padding:6px 4px;border-bottom:1px solid var(--line,#D3D8DD);text-align:left}.authdlg td button{font-size:13px;padding:4px 8px;margin-right:4px;cursor:pointer}.authdlg .row{display:flex;gap:8px}.authdlg .row>*{flex:1}#autherr,.authdlg .err{color:#b3261e;font-size:14px;min-height:18px;margin-top:8px}.authdlg .ok{color:#1b7a3a;font-size:14px;margin-top:8px}.authdlg h3{margin:18px 0 0;font-size:16px}.authbtn{white-space:nowrap}'; document.head.appendChild(s)}
+  function showLogin(){style();let ov=document.getElementById('authov');if(ov)return;ov=document.createElement('div');ov.id='authov';
+    ov.innerHTML='<form class="card" autocomplete="off"><h2>Sign in</h2><div style="color:var(--muted,#56616D);font-size:14px">Laing Rental Equipment Tracker</div><label for="authu">User</label><select id="authu">'+load().map(u=>'<option>'+esc(u.n)+'</option>').join('')+'</select><label for="authp">PIN</label><input id="authp" type="password" inputmode="numeric" autocomplete="off"><div id="autherr" role="alert"></div><button class="go" type="submit">Sign in</button><div style="margin-top:10px;font-size:12px;color:var(--muted,#56616D);text-align:center">Version with sign-in · 23 Nov 2026</div></form>';
+    document.body.appendChild(ov);const last=ssg('rytLastUser')||lsg('rytLastUser');if(last&&find(last))ov.querySelector('#authu').value=find(last).n;
+    ov.querySelector('form').addEventListener('submit',ev=>{ev.preventDefault();const err=ov.querySelector('#autherr'),p=ov.querySelector('#authp');
+      if(Date.now()<lockUntil){err.textContent='Too many tries. Wait '+Math.ceil((lockUntil-Date.now())/1000)+' seconds.';return}
+      const u=find(ov.querySelector('#authu').value);if(u&&u.h===hash(u.n,p.value.trim())){fails=0;signIn(u)}else{fails++;if(fails>=5){lockUntil=Date.now()+30000;fails=0;err.textContent='Too many tries. Wait 30 seconds.'}else err.textContent='Wrong PIN.';p.value='';p.focus()}});
+    setTimeout(()=>ov.querySelector('#authp').focus(),50)}
+  function signIn(u){cur={n:u.n,r:u.r};sss('rytSess',JSON.stringify({n:u.n,h:u.h}));lss('rytLastUser',u.n);const ov=document.getElementById('authov');if(ov)ov.remove();if(typeof go==='function'){try{go('home')}catch(e){}}}
+  function signOut(){cur=null;sss('rytSess',null);try{render()}catch(e){}showLogin()}
+  function restore(){try{const s=JSON.parse(ssg('rytSess')||'null');if(s){const u=find(s.n);if(u&&u.h===s.h){cur={n:u.n,r:u.r};return true}}}catch(e){}return false}
+  function apply(){style();const d=document.documentElement;d.dataset.role=role();
+    if(!cur){showLogin();return}
+    if(!document.getElementById('acctbtn')){const t=document.getElementById('thbtn');if(t){const b=document.createElement('button');b.className=t.className+' authbtn';b.id='acctbtn';b.type='button';b.title='Account and PIN';t.parentNode.insertBefore(b,t);const o=document.createElement('button');o.className=t.className+' authbtn';o.id='outbtn';o.type='button';o.textContent='Sign out';t.parentNode.insertBefore(o,t)}}
+    const ab=document.getElementById('acctbtn');if(ab)ab.textContent=cur.n+' · '+LABEL[cur.r];
+    document.querySelectorAll('[data-act]').forEach(el=>{if(!allowAct(el.dataset.act,el)){el.style.display='none'}});
+    if(cur.r==='viewer'){document.querySelectorAll('#frm input,#frm select,#frm textarea').forEach(el=>{el.disabled=true});document.querySelectorAll('#frm button[type=submit],#frm button:not([type]),#frm input[type=file]').forEach(el=>{el.style.display='none'});
+      if(!document.getElementById('vbanner')){const m=document.getElementById('app');if(m&&document.getElementById('frm')){const x=document.createElement('div');x.id='vbanner';x.className='notice';x.textContent='View only. Your login cannot change records.';m.insertBefore(x,m.firstChild)}}}}
+  function dlg(html){style();const d=document.createElement('dialog');d.className='authdlg';d.innerHTML=html;document.body.appendChild(d);d.addEventListener('close',()=>d.remove());d.showModal();return d}
+  function account(){const adm=cur.r==='admin';
+    const d=dlg('<b style="font-size:18px">Account</b><div style="color:var(--muted,#56616D);font-size:14px">Signed in as '+esc(cur.n)+' ('+LABEL[cur.r]+')</div><h3>Change my PIN</h3><label>Current PIN</label><input id="ap0" type="password" inputmode="numeric"><div class="row"><div><label>New PIN (4+ digits)</label><input id="ap1" type="password" inputmode="numeric"></div><div><label>Repeat</label><input id="ap2" type="password" inputmode="numeric"></div></div><div class="err" id="apm"></div><button class="go" id="apsave" type="button">Save my PIN</button>'+(adm?'<h3>Users</h3><div id="ulist"></div><div class="row" style="margin-top:12px"><div><label>Name</label><input id="un"></div><div><label>Access</label><select id="ur"><option value="viewer">Viewer</option><option value="operator">Operator</option><option value="admin">Admin</option></select></div><div><label>PIN</label><input id="up" type="password" inputmode="numeric"></div></div><button class="go" id="uadd" type="button">Add user</button>':'')+'<button class="go" id="aclose" type="button" style="background:var(--line,#D3D8DD)">Close</button>');
+    const q=s=>d.querySelector(s),msg=(t,ok)=>{const m=q('#apm');m.className=ok?'ok':'err';m.textContent=t};
+    q('#aclose').onclick=()=>d.close();
+    q('#apsave').onclick=()=>{const u=find(cur.n);if(u.h!==hash(u.n,q('#ap0').value.trim()))return msg('Current PIN is wrong.');const p=q('#ap1').value.trim();if(!/^\d{4,12}$/.test(p))return msg('PIN must be 4 to 12 digits.');if(p!==q('#ap2').value.trim())return msg('The new PINs do not match.');u.h=hash(u.n,p);save();sss('rytSess',JSON.stringify({n:u.n,h:u.h}));['#ap0','#ap1','#ap2'].forEach(s=>q(s).value='');msg('PIN changed.',true)};
+    function list(){const L=q('#ulist');if(!L)return;L.innerHTML='<table><tr><th>User</th><th>Access</th><th></th></tr>'+load().map((u,i)=>'<tr><td>'+esc(u.n)+'</td><td><select data-i="'+i+'" class="rsel" style="font-size:14px;padding:4px"><option value="viewer"'+(u.r==='viewer'?' selected':'')+'>Viewer</option><option value="operator"'+(u.r==='operator'?' selected':'')+'>Operator</option><option value="admin"'+(u.r==='admin'?' selected':'')+'>Admin</option></select></td><td><button data-rp="'+i+'" type="button">Reset PIN</button><button data-rm="'+i+'" type="button">Remove</button></td></tr>').join('')+'</table>'}
+    list();
+    d.addEventListener('change',e=>{const s=e.target.closest('.rsel');if(!s)return;const u=users[+s.dataset.i];if(u.r==='admin'&&s.value!=='admin'&&users.filter(x=>x.r==='admin').length<2){s.value='admin';return msg('There must be at least one Admin.')}u.r=s.value;save();if(u.n===cur.n){cur.r=u.r;sss('rytSess',JSON.stringify({n:u.n,h:u.h}))}msg(u.n+' is now '+LABEL[u.r]+'.',true)});
+    d.addEventListener('click',e=>{const rp=e.target.dataset&&e.target.dataset.rp,rm=e.target.dataset&&e.target.dataset.rm;
+      if(rp!=null){const u=users[+rp],p=prompt('New PIN for '+u.n+' (4 to 12 digits)');if(p==null)return;if(!/^\d{4,12}$/.test(p.trim()))return msg('PIN must be 4 to 12 digits.');u.h=hash(u.n,p.trim());save();if(u.n===cur.n)sss('rytSess',JSON.stringify({n:u.n,h:u.h}));msg('PIN reset for '+u.n+'.',true)}
+      if(rm!=null){const u=users[+rm];if(u.n===cur.n)return msg('You cannot remove the user you are signed in as.');if(u.r==='admin'&&users.filter(x=>x.r==='admin').length<2)return msg('There must be at least one Admin.');if(!confirm('Remove '+u.n+'?'))return;users.splice(+rm,1);save();list();msg('Removed.',true)}});
+    const ua=q('#uadd');if(ua)ua.onclick=()=>{const n=q('#un').value.trim(),p=q('#up').value.trim();if(!n)return msg('Enter a name.');if(find(n))return msg('That name is already used.');if(!/^\d{4,12}$/.test(p))return msg('PIN must be 4 to 12 digits.');users.push({n,r:q('#ur').value,h:hash(n,p)});save();list();q('#un').value=q('#up').value='';msg('Added '+n+'.',true)}}
+  load();restore();
+  document.addEventListener('click',e=>{if(e.target.closest('#acctbtn'))account();else if(e.target.closest('#outbtn'))signOut()});
+  /* Viewers cannot attach files. */
+  document.addEventListener('change',e=>{if(cur&&cur.r==='viewer'&&e.target&&e.target.type==='file'){e.stopImmediatePropagation();e.target.value=''}},true);
+  document.addEventListener('DOMContentLoaded',()=>{if(!cur)showLogin()});
+  if(document.body&&!cur)showLogin();
+  return {can:k=>k==='write'?rank()>=2:k==='delete'?rank()>=3:false,isAdmin:()=>role()==='admin',role,user:()=>cur&&cur.n,allowView,allowAct,apply,signOut,showLogin};
+})();
+</script>
+<script>
 const $=s=>document.querySelector(s);
 const TYPES=[['Generators','GEN'],['Air Compressors','AC'],['Light Towers','LT'],['Fuel Tanks','DFT'],['Air Dryers','AD'],['Skid / CCU','CCU'],['Other','EQ']];
 const STATUSES=['Available','Sold','On rental','Level 1 service','Level 2 service','Level 3 service','Shutdown on site','Scrapped','New','To be assessed'];
@@ -446,8 +519,6 @@ async function doSale(e,sale){
   return ids}
 const inSkid=id=>S.equipment.filter(e=>e.skid===id&&!gone(e));
 /* ---------- Skid / CCU = ONE unit: whatever is installed in a CCU / skid follows it (rental, service, available, shutdown, restart, demobilise; sale is handled in saleGroup) ---------- */
-/* counts: a Skid / CCU and the equipment installed in it are ONE unit (the installed items are not counted again) */
-const one=arr=>arr.filter(e=>!(e.skid&&arr.some(x=>x.id===e.skid&&x.type==='Skid / CCU')));
 let GRPB=false;
 const grpOf=e=>{const c=e.type==='Skid / CCU'?e:(e.skid?eq(e.skid):null);if(!c||c.type!=='Skid / CCU')return [e];return [c,...S.equipment.filter(x=>x.skid===c.id&&x.id!==c.id&&!gone(x))]};
 const grpIds=e=>grpOf(e).map(x=>x.id);
@@ -485,9 +556,9 @@ const histShow=h=>{const t=h.t||'';
   if(/^(Demobilised from|Returned from rental)/.test(t))return 'Demobilised on '+fd(h.d);
   if(/^Shutdown on site/.test(t))return 'Shutdown on site on '+fd(h.d)+t.slice('Shutdown on site'.length);
   if(/^On rental to/.test(t)){
-    const v=/(\d+\s+(?:day|week|month|year)s?)/i.exec(t),du=/\(due ([^)]+)\)/.exec(t),st=/start date: (.+?)(?: ·|$)/.exec(t),rh=/run hrs at start: (.+?)(?: ·|$)/.exec(t),lc=/location: (.+?)(?: ·|$)/.exec(t);
+    const v=/(\d+\s+(?:day|week|month|year)s?)/i.exec(t),du=/\(due ([^)]+)\)/.exec(t),st=/start date: (.+?)(?: ·|$)/.exec(t),rh=/run hrs at start: (.+?)(?: ·|$)/.exec(t);
     const cl=(t.replace(/^On rental to /,'').split(' · ')[0]||'').replace(/\s*\(due .*$/,'').trim();
-    if(v||du||st)return [cl?'Client: '+cl:'','Start date of equipment rental: '+fd(h.d),v?'Validity: '+v[1]:'',du?'Due date: '+du[1]:'',lc?'Location: '+lc[1]:'',rh?'Run hours at start: '+rh[1]:''].filter(Boolean).join(' · ');
+    if(v||du||st)return [cl?'Client: '+cl:'','Start date of equipment rental: '+fd(h.d),v?'Validity: '+v[1]:'',du?'Due date: '+du[1]:'',rh?'Run hours at start: '+rh[1]:''].filter(Boolean).join(' · ');
   }
   return t};
 const askDate=(msg,min)=>{for(;;){const v=window.prompt(msg+'\nFormat: YYYY-MM-DD',today());if(v===null)return null;const d=v.trim();if(!/^\d{4}-\d{2}-\d{2}$/.test(d)||isNaN(Date.parse(d))){alert('Enter a valid date as YYYY-MM-DD.');continue}if(min&&d<min){alert('The date cannot be before '+fd(min)+'.');continue}return d}};
@@ -566,7 +637,7 @@ const spStat=p=>!p.units.length?'Idle (nothing out)':(p.units.some(u=>effStatus(
 const cnts=a=>`<div class="cnts" role="group" aria-label="Totals">${a.map(([n,l,c])=>`<div class="cnt"><b${c?` style="color:var(--${c})"`:''}>${n}</b>${esc(l)}</div>`).join('')}</div>`;
 function salesCnts(){
   const codes=allProjCodes(),act=activeProjects(),eqs=S.equipment,t=today();
-  return cnts([[codes.length,'Total projects'],[act.length,'Active projects','info'],[codes.filter(projClosed).length,'Closed projects','ok'],[one(eqs.filter(e=>e.status==='On rental')).length,'Units on rental'],[one(eqs.filter(e=>e.status==='On rental'&&e.dueBack&&e.dueBack<t)).length,'Overdue rentals','bad'],[one(eqs.filter(isSold)).length,'Units sold']])}
+  return cnts([[codes.length,'Total projects'],[act.length,'Active projects','info'],[codes.filter(projClosed).length,'Closed projects','ok'],[eqs.filter(e=>e.status==='On rental').length,'Units on rental'],[eqs.filter(e=>e.status==='On rental'&&e.dueBack&&e.dueBack<t).length,'Overdue rentals','bad'],[eqs.filter(isSold).length,'Units sold']])}
 function mrCnts(){
   const m=S.mrs,t=today(),op=m.filter(x=>mrStat(x)!=='Closed'),p=k=>op.filter(x=>mrPri(x.priority)===k).length;
   return cnts([[m.length,'Total MRs'],[op.length,'Open MRs','warn'],[m.length-op.length,'Closed MRs','ok'],[p('High'),'High priority (open)','bad'],[p('Medium'),'Medium priority (open)','warn'],[p('Low'),'Low priority (open)','ok'],[op.filter(x=>x.due&&x.due<t).length,'Open and past due','bad']])}
@@ -634,7 +705,7 @@ const allCerts=e=>(e.certs||[]).concat(skCerts(e).map(c=>({...c,oid:c.id,id:'ski
 const certDue=e=>allCerts(e).filter(c=>{const k=certStatus(c).k;return k==='exp'||k==='soon'});
 const certExp=e=>allCerts(e).filter(c=>certStatus(c).k==='exp');
 const skOcc=e=>e.type==='Skid / CCU'&&(inSkid(e.id).length>0||!!(sk(e.id)&&sk(e.id).use));
-const skContents=e=>{if(e.type!=='Skid / CCU')return '';const k=sk(e.id),u=inSkid(e.id).map(x=>`<span data-act="open" data-id="${esc(x.id)}" style="cursor:pointer;text-decoration:underline dotted" title="Open ${esc(x.id)}">${esc(x.id)}</span>`);if(k&&k.use)u.push(esc('Other: '+k.use));return u.length?`<span class="sub" style="display:block;font-size:13px;color:var(--muted)" title="Installed in this Skid / CCU — tracked as one unit">${u.join(', ')}</span>`:''};
+const skContents=e=>{if(e.type!=='Skid / CCU')return '';const k=sk(e.id),u=inSkid(e.id).map(x=>x.id);if(k&&k.use)u.push('Other: '+k.use);return u.length?`<span class="sub" style="display:block;font-size:13px;color:var(--muted)" title="Installed in this Skid / CCU">${u.map(esc).join(', ')}</span>`:''};
 const occChip=e=>e.type==='Skid / CCU'?(skOcc(e)?'<span class="chip info">Occupied</span>':'<span class="chip ok">Empty</span>'):'';
 const idTag=e=>`<span class="code${certExp(e).length?' flash':''}">${esc(e.id)}</span>`+(e.skid?` <span class="code" title="Installed in this Skid / CCU">${esc(e.skid)}</span>`:'');
 const expBadge=e=>certExp(e).length?' <span class="chip bad">Cert expired</span>':'';
@@ -1009,8 +1080,8 @@ function xlDashboard(km,cc){
   const allAct=S.equipment.filter(e=>!gone(e));
   const types=[...new Set(allAct.map(e=>e.type).filter(Boolean))].sort(),names=['All equipment',...types];
   const tryN=f=>{try{return f()}catch(e){return 0}};
-  const calc=t=>{const act=allAct.filter(e=>t==='All equipment'||e.type===t),n=f=>one(act.filter(f)).length;let ds=[];try{ds=act.flatMap(dueInfo)}catch(e){}
-    return {units:one(act).length,avail:n(e=>e.status==='Available'),rent:n(e=>e.status==='On rental'),late:n(e=>effStatus(e)==='Overdue'),down:n(isDown),repair:n(e=>isRepair(e.status)),cdue:tryN(()=>act.reduce((s,e)=>s+certDue(e).length,0)),cexp:tryN(()=>act.reduce((s,e)=>s+certExp(e).length,0)),open:S.tickets.filter(x=>x.status!=='Closed'&&act.some(e=>e.id===x.equip)).length,sdue:ds.filter(d=>d.bad||d.soon).length,sbad:ds.filter(d=>d.bad).length}};
+  const calc=t=>{const act=allAct.filter(e=>t==='All equipment'||e.type===t),n=f=>act.filter(f).length;let ds=[];try{ds=act.flatMap(dueInfo)}catch(e){}
+    return {units:act.length,avail:n(e=>e.status==='Available'),rent:n(e=>e.status==='On rental'),late:n(e=>effStatus(e)==='Overdue'),down:n(isDown),repair:n(e=>isRepair(e.status)),cdue:tryN(()=>act.reduce((s,e)=>s+certDue(e).length,0)),cexp:tryN(()=>act.reduce((s,e)=>s+certExp(e).length,0)),open:S.tickets.filter(x=>x.status!=='Closed'&&act.some(e=>e.id===x.equip)).length,sdue:ds.filter(d=>d.bad||d.soon).length,sbad:ds.filter(d=>d.bad).length}};
   /* sized ranges keep the type-filtered formulas quick */
   const rg=(sheet,key)=>{const j=(km[sheet]||[]).indexOf(key);if(j<0)return null;const c=xlColName(j),n=Math.max(1000,((sheet==='Equipment'?S.equipment:sheet==='Tickets'?S.tickets:S.downtime).length||0)*2+200);return `'${sheet}'!$${c}$2:$${c}$${n}`};
   const SEL='$B$7',cats=TYPES.map(x=>x[0]);
@@ -1298,6 +1369,7 @@ function syncRentalEntry(h,e){
   return h.map((y,j)=>j===last?{...y,d:e.dateOut,t:nt}:y).map((y,j)=>[y,j]).sort((a,b)=>(a[0].d||'').localeCompare(b[0].d||'')||a[1]-b[1]).map(y=>y[0]);
 }
 async function put(col,id,data){
+  if(!AUTH.can('write')){toast('Your login is view-only.');return false}
   if(col==='equipment'&&data&&data.history)data={...data,history:syncRentalEntry(data.history,data)};
   const prev=col==='equipment'?S.equipment.find(x=>x.id===id):null;
   if(db){try{await db.collection(col).doc(id).set(data)}catch(e){toast(e.code==='invalid_argument'?'You have view-only access to this tracker.':'Could not save. Try again.');return false}}
@@ -1309,6 +1381,7 @@ async function put(col,id,data){
   return true;
 }
 async function del(col,id){
+  if(!AUTH.can('delete')){toast('Only an Admin can delete.');return false}
   if(db){try{await db.collection(col).doc(id).delete()}catch(e){toast('Could not delete.');return false}}
   else{S[col]=S[col].filter(x=>x.id!==id);persist()}
   return true;
@@ -1334,7 +1407,7 @@ function statusFields(e,st,pick){
   return `<div id="g-rental" ${st==='On rental'?'':'hidden'} class="stack">
       ${projSel}
       ${pick?`<div id="projInfo" class="hint" aria-live="polite"></div>${pickRows}<div id="projFlag" class="hint" aria-live="polite"></div>`:''}
-      ${e.noLoc?'':fld('rentLoc','Location delivered to (where the equipment is on the rental)','text',e.rentLoc,'placeholder="e.g. Well pad 3, Gate 2 compound, GPS"')}
+      ${e.noLoc?'':fld('rentLoc','Location of this equipment on the rental','text',e.rentLoc,'placeholder="e.g. Well pad 3, Gate 2 compound, GPS (optional)"')}
       <div class="stack" ${pick?'hidden':''}>
       <div class="two">${fld('customer','Client name','text',e.customer,'placeholder="e.g. BP, Heritage"')}${pick?'':fld('project','Project code','text',e.project,'placeholder="e.g. PRJ-1001"')}</div>
       ${pick?'':durRow}
@@ -1352,8 +1425,8 @@ function homeTypeBar(all){
   const types=[...new Set(all.map(e=>e.type).filter(Boolean))].sort();
   return `<div class="filters homeTop"><label class="f"><span>Select Equipment type</span><select id="homeType" aria-label="Choose which equipment type the counts are for"><option value="">All equipment</option>${types.map(t=>`<option ${t===homeType?'selected':''}>${esc(t)}</option>`).join('')}</select></label><button class="btn noprint" type="button" data-act="print" aria-label="Print the home page">🖨 Print</button></div>`;
 }
-const projKey=e=>(e.project||'').trim()?'p:'+String(e.project).trim().toLowerCase():'c:'+(e.customer||'').trim().toLowerCase();
-function activeProjects(){const g={};S.equipment.filter(e=>e.status==='On rental').forEach(e=>{const k=projKey(e);(g[k]=g[k]||{key:k,customer:e.customer||'',project:e.project||'',dateOut:e.dateOut||'',dueBack:e.dueBack||'',duration:e.duration||'',durUnit:e.durUnit||'',shift:e.shift||'',operator:e.operator||'',fuel:e.fuel||'',fuelQty:e.fuelQty||'',units:[]}).units.push(e)});Object.values(g).forEach(p=>{const r=projRec(p.project),us=p.units;{const cc={};us.forEach(u=>{const c=(u.customer||'').trim();if(c)cc[c]=(cc[c]||0)+1});const top=Object.keys(cc).sort((a,b)=>cc[b]-cc[a])[0]||'';p.customer=(r&&r.customer)||top||p.customer;if(r&&r.code)p.project=r.code}if(r&&(r.dateOut||r.dueBack)){p.dateOut=r.dateOut||p.dateOut;p.dueBack=r.dueBack||p.dueBack;p.duration=r.duration||p.duration;p.durUnit=r.durUnit||p.durUnit}else{p.dateOut=us.map(u=>u.dateOut).filter(Boolean).sort()[0]||'';p.dueBack=us.map(u=>u.dueBack).filter(Boolean).sort().pop()||''}});return Object.values(g).sort((a,b)=>(a.dueBack||'9999').localeCompare(b.dueBack||'9999')||a.customer.localeCompare(b.customer))}
+const projKey=e=>[e.customer||'',e.project||''].join('|');
+function activeProjects(){const g={};S.equipment.filter(e=>e.status==='On rental').forEach(e=>{const k=projKey(e);(g[k]=g[k]||{key:k,customer:e.customer||'',project:e.project||'',dateOut:e.dateOut||'',dueBack:e.dueBack||'',duration:e.duration||'',durUnit:e.durUnit||'',shift:e.shift||'',operator:e.operator||'',fuel:e.fuel||'',fuelQty:e.fuelQty||'',units:[]}).units.push(e)});Object.values(g).forEach(p=>{const r=projRec(p.project),us=p.units;if(r&&(r.dateOut||r.dueBack)){p.dateOut=r.dateOut||p.dateOut;p.dueBack=r.dueBack||p.dueBack;p.duration=r.duration||p.duration;p.durUnit=r.durUnit||p.durUnit}else{p.dateOut=us.map(u=>u.dateOut).filter(Boolean).sort()[0]||'';p.dueBack=us.map(u=>u.dueBack).filter(Boolean).sort().pop()||''}});return Object.values(g).sort((a,b)=>(a.dueBack||'9999').localeCompare(b.dueBack||'9999')||a.customer.localeCompare(b.customer))}
 const projLabel=p=>[p.customer||'No client',p.project].filter(Boolean).join(' · ')+(p.dateOut?' · out '+fd(p.dateOut):'')+(p.dueBack?' → due '+fd(p.dueBack):'')+' ('+p.units.length+' unit'+(p.units.length===1?'':'s')+')';
 let PROJS=[];
 const PAL=['#1e73e8','#ffb100','#16a34a','#ef4444','#8b5cf6','#06b6d4','#f97316','#ec4899'];
@@ -1434,7 +1507,7 @@ function statusSummary(){
     ${hidden?`<div class="hint">${hidden} unit${hidden===1?'':'s'} in a category that is no longer offered (for example Forklifts) ${hidden===1?'is':'are'} not shown here.</div>`:''}
     ${other?`<div class="hint">${other} unit${other===1?'':'s'} with another status (for example Shutdown on site) ${other===1?'is':'are'} counted in TOTAL only.</div>`:''}</div>`;
 }
-const NAV_OF={list:'filter',open:'filter',add:'filter',edit:'filter',added:'filter',status:'filter',demob:'filter',skids:'filter',skidform:'filter',install:'filter',down:'filter',restart:'filter',fr:'filter',fredit:'filter',histedit:'filter',histall:'filter',plhist:'sales',sell:'filter',tickets:'tickets',ticket:'tickets',ticketnew:'tickets',sales:'sales',mr:'mrs',pers:'pers',persform:'pers',perscert:'pers',perscerts:'pers',due:'due',certsdue:'certs',cert:'certs',fo:'certs',foform:'certs',laing:'certs',storage:'storage'};
+const NAV_OF={list:'filter',open:'filter',add:'filter',edit:'filter',added:'filter',status:'filter',demob:'filter',skids:'filter',skidform:'filter',install:'filter',down:'filter',restart:'filter',fr:'filter',fredit:'filter',histedit:'filter',histall:'filter',sell:'filter',tickets:'tickets',ticket:'tickets',ticketnew:'tickets',sales:'sales',mr:'mrs',pers:'pers',persform:'pers',perscert:'pers',perscerts:'pers',due:'due',certsdue:'certs',cert:'certs',fo:'certs',foform:'certs',laing:'certs',storage:'storage'};
 function topNav(n){const cur=NAV_OF[n||view.n]||'';return topNavBase().replace(/<button class="link"( data-tip="[^"]*" aria-label="[^"]*" data-act="(\w+)")/g,(m,rest,a)=>'<button class="link'+(a===cur?' on':'')+'"'+(a===cur?' aria-current="page"':'')+rest)}
 function topNavBase(){return `<nav class="topnav" aria-label="Sections"><button class="link" data-tip="Equipment &amp; Assets" aria-label="Equipment &amp; Assets" data-act="filter" data-id=""><svg class="ic" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="6" width="19" height="11" rx="2"/><path d="M13 8.5 10 12h4l-3 3.5M6 17v3M18 17v3M5 6V4M9 6V4"/></svg><span>Equipment &amp; Assets</span></button><button class="link" data-tip="Maintenance log" aria-label="Maintenance log" data-act="tickets"><svg class="ic" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.4-.6-.6-2.4z"/></svg><span>Maintenance log</span></button><button class="link" data-tip="Sales &amp; Rentals" aria-label="Sales &amp; Rentals" data-act="sales"><svg class="ic" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="20" r="1.5"/><circle cx="18" cy="20" r="1.5"/><path d="M2 3h3l2.5 12h11l2-8H6"/></svg><span>Sales &amp; Rentals</span></button><button class="link" data-tip="Material Requisitions" aria-label="Material Requisitions" data-act="mrs"><svg class="ic" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 3h6l1 2h3v16H5V5h3z"/><path d="M9 11h6M9 15h6"/></svg><span>Material Requisitions</span></button><button class="link" data-tip="Rental Personnel" aria-label="Rental Personnel" data-act="pers"><svg class="ic" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><circle cx="17" cy="9" r="2.4"/><path d="M16.5 14.2c2.6.2 4.5 2.4 4.5 5.8"/></svg><span>Rental Personnel</span></button><span class="tsep" aria-hidden="true"></span><button class="link" data-tip="Service schedule" aria-label="Service schedule" data-act="due"><svg class="ic" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg><span>Service schedule</span></button><button class="link" data-tip="Certificates" aria-label="Certificates" data-act="certs"><svg class="ic" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="9" r="6"/><path d="M8.5 14 7 22l5-3 5 3-1.5-8"/></svg><span>Certificates</span></button><button class="link" data-tip="OneDrive storage" aria-label="OneDrive storage" data-act="storage"><svg class="ic" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 18a4 4 0 0 1-.5-8 5.5 5.5 0 0 1 10.6 1.5A3.5 3.5 0 0 1 17 18z"/></svg><span>OneDrive storage</span></button></nav>`}
 function viewHome(){
@@ -1442,7 +1515,7 @@ function viewHome(){
   const inT=e=>!homeType||e.type===homeType,inTk=t=>{const e=eq(t.equip);return !homeType||(!!e&&e.type===homeType)};
   if(homeType&&!allAct.some(e=>e.type===homeType))homeType='';
   const act=allAct.filter(e=>!homeType||e.type===homeType);
-  const TK=S.tickets.filter(inTk),n=f=>one(act.filter(f)).length;
+  const TK=S.tickets.filter(inTk),n=f=>act.filter(f).length;
   const pct=(x,t)=>`<small class="pct">${t?Math.round(x/t*100):0}%</small>`;
   const late=n(e=>effStatus(e)==='Overdue');
   const dues=act.flatMap(dueInfo),dueBad=dues.filter(d=>d.bad).length,dueSoon=dues.filter(d=>d.soon).length,openT=S.tickets.filter(t=>t.status!=='Closed'&&act.some(e=>e.id===t.equip)).length;
@@ -1454,11 +1527,11 @@ function viewHome(){
   <div class="homeMain">
   ${homeTypeBar(allAct)}
   <div class="strip">
-    ${tile('filter','',one(act).length,homeType||'All equipment','')}
-    ${tile('filter','Available',n(e=>e.status==='Available'),'Available',pct(n(e=>e.status==='Available'),one(act).length))}
-    ${tile('filter','On rental',n(e=>e.status==='On rental'),'On rental',pct(n(e=>e.status==='On rental'),one(act).length)+(late?`<small class="bad">${late} overdue</small>`:''))}
-    ${tile('filter','__down',n(isDown),'Shutdown on site',pct(n(isDown),one(act).length))}
-    ${tile('filter','__repair',n(e=>isRepair(e.status)),'In service / repair',pct(n(e=>isRepair(e.status)),one(act).length))}
+    ${tile('filter','',act.length,homeType||'All equipment','')}
+    ${tile('filter','Available',n(e=>e.status==='Available'),'Available',pct(n(e=>e.status==='Available'),act.length))}
+    ${tile('filter','On rental',n(e=>e.status==='On rental'),'On rental',pct(n(e=>e.status==='On rental'),act.length)+(late?`<small class="bad">${late} overdue</small>`:''))}
+    ${tile('filter','__down',n(isDown),'Shutdown on site',pct(n(isDown),act.length))}
+    ${tile('filter','__repair',n(e=>isRepair(e.status)),'In service / repair',pct(n(e=>isRepair(e.status)),act.length))}
     ${tile('certs','',act.reduce((n,e)=>n+certDue(e).length,0),'Certs due',act.reduce((n,e)=>n+certExp(e).length,0)?`<small class="bad">${act.reduce((n,e)=>n+certExp(e).length,0)} expired</small>`:'')}
     ${tile('tickets','',openT,'Open tickets','')}
     ${tile('due','',dueBad+dueSoon,'Service due',dueBad?`<small class="bad">${dueBad} overdue</small>`:'')}
@@ -1479,26 +1552,23 @@ function viewList(){
   const rows=S.equipment.filter(e=>(!q||[e.id,label(e),e.serial,e.location,e.customer,e.project,e.skid,e.type].join(' ').toLowerCase().includes(q))
     &&(!F.type||e.type===F.type)&&(!F.status||(F.status==='__repair'?isRepair(e.status):F.status==='__down'||F.status==='Shutdown on site'?isDown(e):F.status==='Overdue'?effStatus(e)==='Overdue':F.status==='Sold'?isSold(e):e.status===F.status))).filter(e=>F.status!=='On rental'||!F.client||(e.customer||'')===F.client).sort((a,b)=>a.id.localeCompare(b.id));
   const rn=F.status==='On rental',ab=true;
-  const rowsR=(q||F.status==='Sold')?rows:rows.filter(e=>!(e.skid&&rows.some(x=>x.id===e.skid&&x.type==='Skid / CCU')));   /* a Skid / CCU and what is installed in it = ONE line (search shows every item) */
   const certCell=e=>{const n=allCerts(e).length,x=certExp(e).length;return n?`<span class="code${x?' flash':''}" title="${n} certificate${n>1?'s':''} (incl. Laing)${x?' · '+x+' expired':''}">${n}</span>`:'<span title="No certificates uploaded">0</span>'};
   const mrCell=e=>{const n=mrsFor(e).length;return n?`<span class="code" title="${n} material requisition${n>1?'s':''}">${n}</span>`:'<span title="No material requisitions">0</span>'};
-  const certCellG=e=>{const g=grpOf(e);if(g.length<2)return certCell(e);const n=g.reduce((a,m)=>a+allCerts(m).filter(c=>!c.inh).length,0),x=g.some(m=>certExp(m).length);return n?`<span class="code${x?' flash':''}" title="${n} certificates for the CCU / skid and its equipment${x?' · some expired':''}">${n}</span>`:'<span title="No certificates uploaded">0</span>'};
-  const mrCellG=e=>{const g=grpOf(e);if(g.length<2)return mrCell(e);const n=new Set(g.flatMap(m=>mrsFor(m).map(r=>r.id||r.no))).size;return n?`<span class="code" title="${n} material requisition${n>1?'s':''}">${n}</span>`:'<span title="No material requisitions">0</span>'};
-  const rentalTbl=`<div class="tablewrap"><table class="eqtable"><thead><tr><th scope="col">ID</th><th scope="col">Client</th><th scope="col">Project code</th><th scope="col">Location on rental</th><th scope="col">Certificates</th><th scope="col">MR</th><th scope="col">Date equipment out</th><th scope="col">Due for return</th></tr></thead><tbody>${rowsR.length?rowsR.map(e=>`<tr class="eqrow${e.dueBack&&e.dueBack<=today()?' rowred':e.dueBack&&e.dueBack<=addDays(today(),30)?' rowyel':''}" tabindex="0" data-act="open" data-id="${esc(e.id)}"><td>${idTag(e)+expBadge(e)+skContents(e)}</td><td>${esc(e.customer||'—')}</td><td>${esc(e.project||'—')}</td><td>${esc(e.rentLoc||'—')}</td><td class="ctr">${certCellG(e)}</td><td class="ctr">${mrCellG(e)}</td><td>${e.dateOut?fd(e.dateOut):'—'}</td><td>${e.dueBack?fd(e.dueBack)+(e.dueBack<today()?' <small><b>('+Math.round((new Date(today())-new Date(e.dueBack))/864e5)+' d overdue)</b></small>':e.dueBack===today()?' <small><b>(due today)</b></small>':e.dueBack<=addDays(today(),30)?' <small>('+Math.round((new Date(e.dueBack)-new Date(today()))/864e5)+' d left)</small>':''):'—'}</td></tr>`).join(''):'<tr><td colspan="8" class="empty">No equipment on rental.</td></tr>'}</tbody></table></div>`;
+  const rentalTbl=`<div class="tablewrap"><table class="eqtable"><thead><tr><th scope="col">ID</th><th scope="col">Client</th><th scope="col">Project code</th><th scope="col">Location on rental</th><th scope="col">Certificates</th><th scope="col">MR</th><th scope="col">Date equipment out</th><th scope="col">Due for return</th></tr></thead><tbody>${rows.length?rows.map(e=>`<tr class="eqrow${e.dueBack&&e.dueBack<=today()?' rowred':e.dueBack&&e.dueBack<=addDays(today(),30)?' rowyel':''}" tabindex="0" data-act="open" data-id="${esc(e.id)}"><td>${idTag(e)+expBadge(e)+skContents(e)}</td><td>${esc(e.customer||'—')}</td><td>${esc(e.project||'—')}</td><td>${esc(e.rentLoc||'—')}</td><td class="ctr">${certCell(e)}</td><td class="ctr">${mrCell(e)}</td><td>${e.dateOut?fd(e.dateOut):'—'}</td><td>${e.dueBack?fd(e.dueBack)+(e.dueBack<today()?' <small><b>('+Math.round((new Date(today())-new Date(e.dueBack))/864e5)+' d overdue)</b></small>':e.dueBack===today()?' <small><b>(due today)</b></small>':e.dueBack<=addDays(today(),30)?' <small>('+Math.round((new Date(e.dueBack)-new Date(today()))/864e5)+' d left)</small>':''):'—'}</td></tr>`).join(''):'<tr><td colspan="8" class="empty">No equipment on rental.</td></tr>'}</tbody></table></div>`;
   const so=F.status==='Sold',types=[...new Set(S.equipment.map(e=>e.type).filter(Boolean))].sort();
   const opt=(a,v)=>a.map(x=>`<option ${x===v?'selected':''}>${esc(x)}</option>`).join('');
   return `
   
   <h2>Equipment</h2>
-  ${(()=>{const T=S.equipment.filter(e=>!F.type||e.type===F.type);return cnts([[one(T.filter(e=>!gone(e))).length,F.type?'Total '+F.type:'Total units'],[one(T.filter(e=>e.status==='Available')).length,'Available','ok'],[one(T.filter(e=>e.status==='On rental')).length,'On rental','info'],[one(T.filter(e=>isRepair(e.status))).length,'In service / repair','warn'],[one(T.filter(isSold)).length,'Sold']])})()}
+  ${(()=>{const T=S.equipment.filter(e=>!F.type||e.type===F.type);return cnts([[T.filter(e=>!gone(e)).length,F.type?'Total '+F.type:'Total units'],[T.filter(e=>e.status==='Available').length,'Available','ok'],[T.filter(e=>e.status==='On rental').length,'On rental','info'],[T.filter(e=>isRepair(e.status)).length,'In service / repair','warn'],[T.filter(isSold).length,'Sold']])})()}
   <div class="filters">
     <input class="f-in" id="q" placeholder="Search ID, serial, location" value="${esc(F.q)}" aria-label="Search equipment" style="font-size:16px;padding:11px 12px;border:2px solid var(--line);border-radius:4px;background:var(--surface);color:var(--ink)">
     <select id="fType" aria-label="Filter by type" style="font-size:16px;padding:11px 12px;border:2px solid var(--line);border-radius:4px;background:var(--surface);color:var(--ink)"><option value="">All types</option>${opt(types,F.type)}</select>
     <select id="fStatus" aria-label="Filter by status" style="font-size:16px;padding:11px 12px;border:2px solid var(--line);border-radius:4px;background:var(--surface);color:var(--ink)"><option value="">All statuses</option><option value="__repair" ${F.status==='__repair'?'selected':''}>Any service / repair</option>${opt([...STATUSES,'Overdue'],F.status)}</select>
     ${F.status==='On rental'?`<select id="fClient" aria-label="Filter by current client" style="font-size:16px;padding:11px 12px;border:2px solid var(--line);border-radius:4px;background:var(--surface);color:var(--ink)"><option value="">All current clients</option>${opt([...new Set(S.equipment.filter(e=>e.status==='On rental'&&(!F.type||e.type===F.type)).map(e=>e.customer).filter(Boolean))].sort((a,b)=>a.localeCompare(b)),F.client)}</select>`:''}
   </div>
-  <div class="actions"><button class="btn pri" data-act="go" data-v="add">Add equipment</button><span class="hint" style="align-self:center">${rowsR.length} of ${S.equipment.length}</span></div>
-  ${rn?rentalTbl:`<div class="tablewrap"><table class="eqtable"><thead><tr><th scope="col" title="Unique code for the unit. A second code is the Skid / CCU it is installed in.">Equipment ID</th><th scope="col" title="Category of equipment.">Type</th><th scope="col" title="Model of the unit.">Model</th><th scope="col" title="Current state: available, on rental, service level, overdue, sold.">Status</th><th scope="col" title="Client while the unit is on rental (buyer if sold); otherwise its current location (compound, yard or site).">Location / Client</th>${so?'':(ab?'':'<th scope="col" title="Date the rental ends.">Due back</th>')+'<th scope="col" title="Components / parts with a validity period: how many are still valid and how many are overdue.">Component/ Parts</th><th scope="col" title="Number of certificates uploaded for this unit. Flashes if any has expired.">Certificates</th><th scope="col" title="Material requisitions raised for this unit">MRs</th>'}</tr></thead><tbody>${rowsR.length?rowsR.map(e=>{const sd=e.status==='Sold',ss=soldSvc(e),z=sd?'':null;return `<tr class="eqrow" tabindex="0" data-act="open" data-id="${esc(e.id)}">
+  <div class="actions"><button class="btn pri" data-act="go" data-v="add">Add equipment</button><span class="hint" style="align-self:center">${rows.length} of ${S.equipment.length}</span></div>
+  ${rn?rentalTbl:`<div class="tablewrap"><table class="eqtable"><thead><tr><th scope="col" title="Unique code for the unit. A second code is the Skid / CCU it is installed in.">Equipment ID</th><th scope="col" title="Category of equipment.">Type</th><th scope="col" title="Model of the unit.">Model</th><th scope="col" title="Current state: available, on rental, service level, overdue, sold.">Status</th><th scope="col" title="Client while the unit is on rental (buyer if sold); otherwise its current location (compound, yard or site).">Location / Client</th>${so?'':(ab?'':'<th scope="col" title="Date the rental ends.">Due back</th>')+'<th scope="col" title="Components / parts with a validity period: how many are still valid and how many are overdue.">Component/ Parts</th><th scope="col" title="Number of certificates uploaded for this unit. Flashes if any has expired.">Certificates</th><th scope="col" title="Material requisitions raised for this unit">MRs</th>'}</tr></thead><tbody>${rows.length?rows.map(e=>{const sd=e.status==='Sold',ss=soldSvc(e),z=sd?'':null;return `<tr class="eqrow" tabindex="0" data-act="open" data-id="${esc(e.id)}">
     <td>${sd?`<span class="code">${esc(e.id)}</span>`+(e.skid?` <span class="code" title="Sold together with this Skid / CCU">${esc(e.skid)}</span>`:''):idTag(e)+expBadge(e)+skContents(e)}</td><td>${esc(e.type||'—')}</td><td>${esc(e.model||'—')}</td>
     <td>${sd?`<span class="chip ${CLS.Sold||'off'}">${esc(soldLabel(e))}</span>`:`<span class="stk">${chip(e)}${occChip(e)}${e.status==='On rental'&&e.dueBack?`<small style="white-space:nowrap;font-weight:600${e.dueBack<=today()?';color:var(--bad)':''}">Due ${fd(e.dueBack)}</small>`:''}</span>`}</td>
     <td>${sd||(ss&&so)?esc(((e.sale&&e.sale.buyer)||'—')):e.status==='On rental'?esc(e.customer||e.location||'—'):esc(e.location||'—')}</td>${so?'':`${ab?'':`<td>${!sd&&e.status==='On rental'&&e.dueBack?fd(e.dueBack):sd?'':'—'}</td>`}
@@ -1518,7 +1588,7 @@ function detailSite(e){
     stats=`<dl class="facts" style="margin:0"><div><dt>Days on site</dt><dd>${onD}</dd></div><div><dt>Days running</dt><dd>${Math.max(0,onD-down)}</dd></div><div><dt>Days shut down</dt><dd>${down}</dd></div></dl>`;
   }
   return `<h2 style="font-size:24px">Site log</h2>
-  ${rented?`<div class="actions">${open?`<button class="btn pri" data-act="restart" data-id="${esc(open.id)}">Restart on site</button><button class="btn" data-act="fredit" data-id="${esc(open.id)}">Update failure report</button>`:`<button class="btn pri" data-act="downnew" data-id="${esc(e.id)}">Log shutdown</button>`}</div>`:''}
+  ${rented?`<div class="actions">${open?`<button class="btn pri" data-act="frview" data-id="${esc(open.id)}">Open failure report</button>`:`<button class="btn pri" data-act="downnew" data-id="${esc(e.id)}">Log shutdown</button>`}</div>`:''}
   ${stats}
   <div class="panel">${all.length?all.map(x=>`<button class="item" data-act="downedit" data-id="${esc(x.id)}"><span><b>${esc(x.reason)}</b><small>${fd(x.start)} to ${x.end?fd(x.end):'still shut down'} · ${dd(x)} d</small></span><span class="mid">${esc(x.party)}${x.project?' · '+esc(x.project):''}<small>${x.note?esc(x.note):''}${x.reportedBy?' · Reported by '+esc(x.reportedBy):''}${x.failureReason?' · Cause: '+esc(x.failureReason):''}${x.corrective?' · Fix: '+esc(x.corrective):''}${x.techAssigned?' · Technician: '+esc(x.techAssigned):''}${x.recommendation?' · Recommendation: '+esc(x.recommendation):''}</small></span><span class="chip ${x.end?'ok':'warn'}">${x.end?'Restarted':'Shut down'}</span></button>`).join(''):'<div class="empty">No shutdowns logged for this unit.</div>'}</div>`;
 }
@@ -1526,22 +1596,31 @@ function detailSite(e){
 const nextFr=()=>{const yy=today().slice(2,4),re=new RegExp('^FR'+yy+'-(\\d+)$');return 'FR'+yy+'-'+String(S.downtime.reduce((m,x)=>{const k=re.exec(String(x.frNo||''));return k?Math.max(m,+k[1]):m},0)+1).padStart(3,'0')};
 const frList=code=>S.downtime.filter(x=>x.frNo&&String(x.project||'').trim().toLowerCase()===String(code||'').trim().toLowerCase()).sort((a,b)=>String(b.frNo).localeCompare(String(a.frNo)));
 const recRow=(pf,i,v)=>`<div class="recrow" style="display:flex;gap:8px;align-items:center"><b class="recn" style="min-width:34px">#${i}</b><input type="text" name="${pf}rec_" value="${esc(v||'')}" maxlength="300" placeholder="Recommendation #${i}" autocomplete="off" style="flex:1"><button type="button" class="btn sm ghost" data-act="recdel" aria-label="Remove recommendation #${i}">✕</button></div>`;
-const frFieldsHtml=pf=>`${area(pf+'cause','1 · Reason for the failure','','required maxlength="400" placeholder="What caused the failure"')}
-    ${fld(pf+'parts','2 · Part/s that failed','text','','required maxlength="300" autocomplete="off" placeholder="e.g. Thermostat, radiator hose (type None if no part failed)"')}
+const whyRow=(pf,i,v,req)=>`<div class="whyrow" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><b style="min-width:34px">${i}.</b><input type="text" name="${pf}why_" value="${esc(v||'')}" maxlength="300" ${req?'required ':''}placeholder="Why ${i}: why it failed" autocomplete="off" style="flex:1;min-width:180px"><label class="btn sm ghost" style="cursor:pointer">+ Picture<input type="file" name="${pf}whyph${i}" accept="image/*" multiple hidden></label><span class="whyfn" style="font-size:12px"></span></div>`;
+function whyCollect(f,pf){
+  const whys=[],files=[];let err='';
+  [...f.querySelectorAll('input[name="'+pf+'why_"]')].forEach((inp,k)=>{
+    const t=inp.value.trim(),ph=f.querySelector('input[name="'+pf+'whyph'+(k+1)+'"]'),fl=ph&&ph.files?[...ph.files]:[];
+    if(t){whys.push(t);fl.forEach(file=>files.push({file,why:whys.length}))}
+    else if(fl.length&&!err)err='Enter the reason for Why '+(k+1)+' before adding its picture.';
+  });
+  return {whys,files,err};
+}
+const frFieldsHtml=pf=>`${fld(pf+'tech','1 · Technician assigned to repair','text','','required autocomplete="off" placeholder="Name of the technician"')}
+    <div class="f"><span>2 · Why it failed (keep asking why, up to 5 times)</span><div class="stack">${[1,2,3,4,5].map(i=>whyRow(pf,i,'',i===1)).join('')}</div></div>
     <label class="f"><span>Evidence pictures (optional, up to 10)</span><input type="file" id="${pf}photos" name="${pf}photos" accept="image/*" multiple></label>
     <div id="${pf}photos-prev" class="frprev" style="display:flex;gap:8px;flex-wrap:wrap"></div>
-    ${area(pf+'fix','3 · Corrective measures','','required maxlength="400" placeholder="What was done to fix it"')}
-    ${fld(pf+'tech','4 · Technician assigned to repair','text','','required autocomplete="off" placeholder="Name of the technician"')}
-    <div class="f"><span>5 · Recommendations</span><div id="${pf}recs" class="stack">${recRow(pf,1,'')}</div><div><button type="button" class="btn sm" data-act="recadd" data-pf="${pf}">+ Add recommendation</button></div></div>`;
+    <div class="f"><span>4 · Recommendations</span><div id="${pf}recs" class="stack">${recRow(pf,1,'')}</div><div><button type="button" class="btn sm" data-act="recadd" data-pf="${pf}">+ Add recommendation</button></div></div>`;
 const recsFromText=s=>String(s||'').split(/\r?\n/).map(l=>l.replace(/^\s*(#?\d+[.)]?\s+)/,'').trim()).filter(Boolean);
 const recsJoin=a=>a.map((r,i)=>(i+1)+'. '+r).join('\n');
 function frRead(f,pf){
   const recs=[...f.querySelectorAll('input[name="'+pf+'rec_"]')].map(i=>i.value.trim()).filter(Boolean),ph=f.querySelector('input[name="'+pf+'photos"]');
-  const o={failureReason:val(f,pf+'cause'),failureParts:val(f,pf+'parts'),corrective:val(f,pf+'fix'),techAssigned:val(f,pf+'tech'),recommendations:recs,recommendation:recsJoin(recs),files:ph&&ph.files?[...ph.files]:[]};
-  o.err=!o.failureReason?'Enter the reason for the failure.':!o.failureParts?'Enter the part/s that failed (type None if no part failed).':!o.corrective?'Enter the corrective measures.':!o.techAssigned?'Enter the technician assigned to repair.':!recs.length?'Enter at least one recommendation.':'';
+  const wc=whyCollect(f,pf),whys=wc.whys;
+  const o={failureReason:recsJoin(whys),whys,techAssigned:val(f,pf+'tech'),recommendations:recs,recommendation:recsJoin(recs),files:[...(ph&&ph.files?[...ph.files]:[]),...wc.files]};
+  o.err=wc.err||(!o.techAssigned?'Enter the technician assigned to repair.':!whys.length?'Enter at least the first reason why it failed.':!recs.length?'Enter at least one recommendation.':'');
   return o;
 }
-const frFields=fr=>({failureReason:fr.failureReason,failureParts:fr.failureParts,corrective:fr.corrective,techAssigned:fr.techAssigned,recommendations:fr.recommendations,recommendation:fr.recommendation});
+const frFields=fr=>({failureReason:fr.failureReason,whys:fr.whys,techAssigned:fr.techAssigned,recommendations:fr.recommendations,recommendation:fr.recommendation});
 async function frJpeg(file){
   let bmp;
   try{bmp=await createImageBitmap(file,{imageOrientation:'from-image'})}
@@ -1554,10 +1633,41 @@ async function frJpeg(file){
 async function frStorePhotos(did,files,existing){
   const out=(existing||[]).slice();
   if(out.length+files.length>10)throw new Error('A failure report can hold up to 10 pictures.');
-  for(const f of files){const j=await frJpeg(f),key='frp/'+did+'/'+Date.now()+'-'+out.length;await IDB.put(key,j.blob);out.push({key,name:f.name,w:j.w,h:j.h,size:j.blob.size})}
+  for(const it of files){const f=it&&it.file?it.file:it,j=await frJpeg(f),key='frp/'+did+'/'+Date.now()+'-'+out.length;await IDB.put(key,j.blob);out.push({key,name:f.name,w:j.w,h:j.h,size:j.blob.size,...(it&&it.why?{why:it.why}:{})})}
   return out;
 }
-let frBusy=false;
+let frBusy=false,frClose=false;
+async function frRelease(r,f,whys,next){
+  const e=eq(r.equip),frNo=r.frNo||nextFr(),cause=whys[whys.length-1]||'';
+  if(next==='restart'){
+    const rd=val(f,'cDate')||today();
+    if(!await put('downtime',r.id,{...rowData(r),end:rd,frNo,releasedBy:'restart',outcome:'restart',statusAfter:'On rental'}))return false;
+    if(e){await put('equipment',e.id,{...rowData(e),status:'On rental',history:hist(e,'Restarted on site on '+fd(rd)+' — cause: '+cause+' · report '+frNo,rd)});await grpNote(e,'Restarted on site on '+fd(rd)+' — cause: '+cause+' · report '+frNo,rd)}
+    toast('Restarted on site · failure report '+frNo+' closed');return true;
+  }
+  if(!e||e.status!=='On rental'){toast('Only a unit that is on rental can be demobilised.');return false}
+  const dt=val(f,'cyDate')||today(),stY=val(f,'cyStatus')||'To be assessed',loc=val(f,'cyLoc');
+  const was=e.project?'project '+e.project+(e.customer?' · '+e.customer:''):(e.customer||'rental');
+  if(!await put('downtime',r.id,{...rowData(r),end:dt>=r.start?dt:r.start,frNo,releasedBy:'demob',outcome:'yard',statusAfter:stY}))return false;
+  await put('equipment',e.id,{...rowData(e),...blankRental,status:stY,customer:'',project:'',dateOut:'',dueBack:'',location:loc||e.location||'',history:hist(e,'Demobilised from '+was+' on '+fd(dt)+' · now '+stY+' · report '+frNo,dt)});
+  toast(e.id+' demobilised to the yard · failure report '+frNo+' closed');return true;
+}
+/* Saving a failure report writes one line to the equipment history (the project history is built from it). Saving again updates that line. */
+async function frHistSave(r,whys,tech,parts,recs,nPics){
+  const e=eq(r.equip);if(!e||!r.frNo)return;
+  const bits=[];
+  if(whys.length)bits.push('why it failed: '+whys.map((w,i)=>(i+1)+') '+w).join(' '));
+  if(parts)bits.push('parts: '+parts);
+  if(tech)bits.push('technician: '+tech);
+  if(recs.length)bits.push('recommendations: '+recs.map((q,i)=>'#'+(i+1)+' '+q).join(' '));
+  if(nPics)bits.push(nPics+' picture'+(nPics===1?'':'s'));
+  const t='Failure report '+r.frNo+' saved'+(bits.length?' — '+bits.join(' · '):''),d=r.end||today(),h=(e.history||[]).slice(),pf='Failure report '+r.frNo+' saved';
+  const old=h.findIndex(v=>(v.t||'').startsWith(pf));if(old>=0)h.splice(old,1);
+  let at=h.length;const k=h.findIndex(v=>(v.d||'')===d&&/^(Demobilised|Returned from rental)/.test(v.t||''));if(k>=0)at=k;
+  h.splice(at,0,{d,t});
+  const out=h.map((v,i)=>[v,i]).sort((a,b)=>(a[0].d||'').localeCompare(b[0].d||'')||a[1]-b[1]).map(v=>v[0]).slice(-60);
+  await put('equipment',e.id,{...rowData(e),history:out});
+}
 async function frAddNow(inp){
   const x=S.downtime.find(r=>r.id===view.id),files=[...inp.files];inp.value='';
   if(!x||!files.length||frBusy)return;
@@ -1569,7 +1679,7 @@ async function frAddNow(inp){
 }
 async function frPhotos(x){
   const out=[];
-  for(const p of (x.photos||[])){try{const b=await IDB.get(p.key);if(b)out.push({u8:new Uint8Array(await b.arrayBuffer()),w:p.w||1000,h:p.h||750,name:p.name||'photo.jpg'})}catch(e){}}
+  for(const p of (x.photos||[])){try{const b=await IDB.get(p.key);if(b)out.push({u8:new Uint8Array(await b.arrayBuffer()),w:p.w||1000,h:p.h||750,name:p.name||'photo.jpg',why:p.why||0})}catch(e){}}
   return out;
 }
 async function frImgs(){
@@ -1591,10 +1701,10 @@ function frDemob(x){
 }
 function frData(x){
   const e=eq(x.equip)||{id:x.equip},s=v=>v==null?'':String(v),done=!!x.end,recs=Array.isArray(x.recommendations)?x.recommendations:recsFromText(x.recommendation),dm=frDemob(x);
-  return {no:s(x.frNo),done,recs,steps:(Array.isArray(x.troubleshooting)?x.troubleshooting:[]).map(s).filter(Boolean),photos:x.photos||[],sections:[
-    {h:'Equipment and project',rows:[['Equipment ID',s(e.id)],['Equipment type',s(e.type)],['Make / model',[e.make,e.model].filter(Boolean).join(' ')],['Serial #',s(e.serial)],...(e.engSerial?[['Engine serial #',s(e.engSerial)]]:[]),...(e.backSerial?[[(btypeOf(e)||'Backend')+' serial #',s(e.backSerial)]]:[]),['Client',s(x.customer)],['Project code',s(x.project)]]},
-    {h:'Shutdown on site',rows:[['Date of shutdown',fd(x.start)],['Current run hours',s(x.hoursAt)],['Failure reported by',s(x.reportedBy)],['Brief description of failure',s(x.note)]]},
-    {h:'Restart and repair',rows:[['Status',done?'Restarted / released from site':'Open, awaiting restart'],['Restart date',done?fd(x.end):''],['Reason for the failure',s(x.failureReason)],['Part/s that failed',s(x.failureParts)],['Corrective measures',s(x.corrective)],['Technician assigned to repair',s(x.techAssigned)]]}],
+  const whys=(Array.isArray(x.whys)&&x.whys.length?x.whys:recsFromText(x.failureReason)).map(s).filter(Boolean);
+  return {no:s(x.frNo),done,recs,whys,steps:[],photos:x.photos||[],sections:[
+    {h:'Equipment and project',rows:[['Equipment ID',s(e.id)],['Equipment type',s(e.type)],['Make / model',[e.make,e.model].filter(Boolean).join(' ')],['Serial #',s(e.serial)],...(e.engSerial?[['Engine serial #',s(e.engSerial)]]:[]),...(e.backSerial?[[(btypeOf(e)||'Backend')+' serial #',s(e.backSerial)]]:[]),['Client',s(x.customer)],['Project code',s(x.project)],['Date of shutdown',fd(x.start)],['Current run hours',s(x.hoursAt)],['Failure reported by',s(x.reportedBy)],['Shutdown Alarm',s(x.note)]]},
+    {h:'Repairs based on Shutdown alarm',rows:[['Technician assigned to repair',s(x.techAssigned)],...[0,1,2,3,4].map(k=>[(k+1)+'. Why it failed',whys[k]||'',k+1])]}],
     after:{h:'Decision and demobilisation',rows:[['Decision after the repair',x.outcome==='yard'?'Demobilize back to Laing Workshop':x.outcome==='restart'?'Restart on site':(x.releasedBy==='demob'?'Demobilised':(done?'Restart on site':''))],['Equipment status after the decision',s(x.statusAfter)||(x.outcome==='restart'||(!x.outcome&&done&&x.releasedBy!=='demob')?'On rental':'')],['Demobilised from project',dm.date?fd(dm.date):(dm.still?'Not demobilised. The unit is still on site.':'')]]}};
 }
 async function buildFrDocx(x,photos){
@@ -1606,15 +1716,16 @@ async function buildFrDocx(x,photos){
   const tc=(w,inner,fill)=>`<w:tc><w:tcPr><w:tcW w:w="${w}" w:type="dxa"/>${fill?`<w:shd w:val="clear" w:color="auto" w:fill="${fill}"/>`:''}</w:tcPr>${inner}</w:tc>`;
   const heading=h=>`<w:p><w:pPr><w:keepNext/><w:spacing w:before="200" w:after="80"/></w:pPr>${run(h,1,26,'1F3864')}</w:p>`;
   const W=[3200,TW-3200];
-  const kv=rows=>tblOpen(W)+rows.map(([k,v])=>`<w:tr><w:trPr><w:cantSplit/></w:trPr>${tc(W[0],paras(k,1,21),'F2F2F2')}${tc(W[1],paras(v,0,22))}</w:tr>`).join('')+'</w:tbl>';
+  const kv=rows=>tblOpen(W)+rows.map(([k,v,w])=>`<w:tr><w:trPr><w:cantSplit/></w:trPr>${tc(W[0],paras(k,1,21),'F2F2F2')}${tc(W[1],paras(v,0,22)+(w?whyPics(w):''))}</w:tr>`).join('')+'</w:tbl>';
   const RW=[900,TW-900];
   const stepT=d.steps.length?heading('Troubleshooting steps')+tblOpen(RW)+`<w:tr><w:trPr><w:cantSplit/><w:tblHeader/></w:trPr>${tc(RW[0],paras('Step',1,21,'center'),'F2F2F2')}${tc(RW[1],paras('What was checked or done',1,21),'F2F2F2')}</w:tr>`+d.steps.map((r,i)=>`<w:tr><w:trPr><w:cantSplit/></w:trPr>${tc(RW[0],paras(String(i+1),1,22,'center'))}${tc(RW[1],paras(r,0,22))}</w:tr>`).join('')+'</w:tbl>':'';
   const recT=tblOpen(RW)+`<w:tr><w:trPr><w:cantSplit/><w:tblHeader/></w:trPr>${tc(RW[0],paras('#',1,21,'center'),'F2F2F2')}${tc(RW[1],paras('Recommendation',1,21),'F2F2F2')}</w:tr>`+(d.recs.length?d.recs:['']).map((r,i)=>`<w:tr><w:trPr><w:cantSplit/></w:trPr>${tc(RW[0],paras(r?'#'+(i+1):'',1,22,'center'))}${tc(RW[1],paras(r,0,22))}</w:tr>`).join('')+'</w:tbl>';
   const NS='xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"';
-  const pic=(i,p,rid)=>{const k=Math.min(3200400/p.w,2286000/p.h),cx=Math.round(p.w*k),cy=Math.round(p.h*k);return `<w:r><w:drawing><wp:inline ${NS} distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${cx}" cy="${cy}"/><wp:docPr id="${100+i}" name="Photo ${i}"/><wp:cNvGraphicFramePr/><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic><pic:nvPicPr><pic:cNvPr id="${i}" name="photo${i}.jpeg"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="${rid}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>`};
-  let photoT='';
-  if(photos.length){const PW=[TW/2,TW/2];photoT=heading('Photographic evidence')+tblOpen(PW);
-    for(let i=0;i<photos.length;i+=2){photoT+='<w:tr><w:trPr><w:cantSplit/></w:trPr>'+[0,1].map(j=>{const p=photos[i+j];return tc(PW[j],p?`<w:p><w:pPr><w:spacing w:before="60" w:after="40"/><w:jc w:val="center"/></w:pPr>${pic(i+j+1,p,'rIdFr'+(i+j+1))}</w:p>`+paras('Photo '+(i+j+1)+' · '+p.name,0,18,'center'):'<w:p/>')}).join('')+'</w:tr>'}
+  const pic=(i,p,rid,mw,mh)=>{const k=Math.min((mw||3200400)/p.w,(mh||2286000)/p.h),cx=Math.round(p.w*k),cy=Math.round(p.h*k);return `<w:r><w:drawing><wp:inline ${NS} distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${cx}" cy="${cy}"/><wp:docPr id="${100+i}" name="Photo ${i}"/><wp:cNvGraphicFramePr/><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic><pic:nvPicPr><pic:cNvPr id="${i}" name="photo${i}.jpeg"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="${rid}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>`};
+  const whyPics=w=>{const l=photos.map((p,i)=>[p,i]).filter(([p])=>p.why===w);return l.length?`<w:p><w:pPr><w:spacing w:before="60" w:after="60"/></w:pPr>${l.map(([p,i],n)=>(n?run('  ',0,22):'')+pic(i+1,p,'rIdFr'+(i+1),1920240,1371600)).join('')}</w:p>`:''};
+  let photoT='';const gp=photos.map((p,i)=>({p,i})).filter(o=>!o.p.why);
+  if(gp.length){const PW=[TW/2,TW/2];photoT=heading('Photographic evidence')+tblOpen(PW);
+    for(let a=0;a<gp.length;a+=2){photoT+='<w:tr><w:trPr><w:cantSplit/></w:trPr>'+[0,1].map(j=>{const o=gp[a+j];return tc(PW[j],o?`<w:p><w:pPr><w:spacing w:before="60" w:after="40"/><w:jc w:val="center"/></w:pPr>${pic(o.i+1,o.p,'rIdFr'+(o.i+1))}</w:p>`+paras('Photo '+(a+j+1)+' · '+o.p.name,0,18,'center'):'<w:p/>')}).join('')+'</w:tr>'}
     photoT+='</w:tbl>'}
   const title=`<w:p><w:pPr><w:pBdr><w:top w:val="single" w:sz="6" w:space="0" w:color="000000"/><w:left w:val="single" w:sz="6" w:space="0" w:color="000000"/><w:bottom w:val="single" w:sz="6" w:space="1" w:color="000000"/><w:right w:val="single" w:sz="6" w:space="0" w:color="000000"/></w:pBdr><w:spacing w:before="860" w:after="120"/><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/><w:b/><w:sz w:val="32"/><w:szCs w:val="32"/><w:highlight w:val="lightGray"/></w:rPr><w:t>FAILURE REPORT</w:t></w:r></w:p>`;
   const no=`<w:p><w:pPr><w:spacing w:before="60" w:after="60"/><w:jc w:val="center"/></w:pPr>${run('Failure Report No. ',0,26)}<w:r><w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri"/><w:b/><w:sz w:val="26"/><w:szCs w:val="26"/><w:u w:val="dotted"/></w:rPr><w:t xml:space="preserve"> ${xlX(d.no)} </w:t></w:r></w:p>`;
@@ -1651,11 +1762,13 @@ function buildFrPdf(x,photos){
   const box=(x0,y0,w,h)=>pdfLn(x0,y0,x0+w,y0,.5,GRY)+pdfLn(x0,y0+h,x0+w,y0+h,.5,GRY)+pdfLn(x0,y0,x0,y0+h,.5,GRY)+pdfLn(x0+w,y0,x0+w,y0+h,.5,GRY);
   const kv=s=>{
     need(60);c+=pdfT(L,y+13,s.h,'hb',12,NAVY);y+=20;
-    s.rows.forEach(([k,v])=>{
-      const kl=pdfWrap(k,'hb',9.5,LW-2*PAD),vl=pdfWrap(v,'tr',FS,R-L-LW-2*PAD),h=Math.max(21,Math.max(kl.length*12,vl.length*LH)+9);
+    s.rows.forEach(([k,v,w])=>{
+      const kl=pdfWrap(k,'hb',9.5,LW-2*PAD),vl=pdfWrap(v,'tr',FS,R-L-LW-2*PAD),ip=w?photos.map((p,i)=>[p,i]).filter(([p])=>p.why===w):[],IW=170,IH=125,ih=ip.length?Math.ceil(ip.length/2)*(IH+8)+2:0,h=Math.max(21,Math.max(kl.length*12,vl.length*LH)+9)+ih;
       need(h);c+=pdfBox(L,y,LW,h,SH);
       kl.forEach((s2,i)=>{if(s2)c+=pdfT(L+PAD,y+14+i*12,s2,'hb',9.5,BLK)});
       vl.forEach((s2,i)=>{if(s2)c+=pdfT(L+LW+PAD,y+14+i*LH,s2,'tr',FS,BLK)});
+      ip.forEach(([p,i],n)=>{const k2=Math.min(IW/p.w,IH/p.h),pw=p.w*k2,ph2=p.h*k2,x0=L+LW+PAD+(n%2)*(IW+8),y0=y+Math.max(vl.length,1)*LH+8+Math.floor(n/2)*(IH+8);
+        c+=box(x0,y0,pw,ph2)+`q ${pdfF2(pw)} 0 0 ${pdfF2(ph2)} ${pdfF2(x0)} ${pdfY(y0+ph2)} cm /Im${i+2} Do Q\n`});
       c+=box(L,y,R-L,h)+pdfLn(L+LW,y,L+LW,y+h,.5,GRY);y+=h;
     });
     y+=16;
@@ -1682,13 +1795,14 @@ function buildFrPdf(x,photos){
   });
   y+=16;
   kv(d.after);
-  if(photos.length){
+  const gp=photos.map((p,i)=>({p,i})).filter(o=>!o.p.why);
+  if(gp.length){
     need(250);c+=pdfT(L,y+13,'Photographic evidence','hb',12,NAVY);y+=22;
     const CWd=(R-L-12)/2,CH=185;
-    for(let i=0;i<photos.length;i+=2){
+    for(let a=0;a<gp.length;a+=2){
       need(CH+30);
-      [0,1].forEach(j=>{const p=photos[i+j];if(!p)return;const k=Math.min((CWd-8)/p.w,(CH-8)/p.h),w=p.w*k,h=p.h*k,x0=L+j*(CWd+12);
-        c+=box(x0,y,CWd,CH)+`q ${pdfF2(w)} 0 0 ${pdfF2(h)} ${pdfF2(x0+(CWd-w)/2)} ${pdfY(y+(CH-h)/2+h)} cm /Im${i+j+2} Do Q\n`+pdfT(x0,y+CH+11,pdfWrap('Photo '+(i+j+1)+' · '+p.name,'he',8.5,CWd)[0],'he',8.5,BLK)});
+      [0,1].forEach(j=>{const o=gp[a+j];if(!o)return;const p=o.p,k=Math.min((CWd-8)/p.w,(CH-8)/p.h),w=p.w*k,h=p.h*k,x0=L+j*(CWd+12);
+        c+=box(x0,y,CWd,CH)+`q ${pdfF2(w)} 0 0 ${pdfF2(h)} ${pdfF2(x0+(CWd-w)/2)} ${pdfY(y+(CH-h)/2+h)} cm /Im${o.i+2} Do Q\n`+pdfT(x0,y+CH+11,pdfWrap('Photo '+(a+j+1)+' · '+p.name,'he',8.5,CWd)[0],'he',8.5,BLK)});
       y+=CH+24;
     }
   }
@@ -1696,20 +1810,51 @@ function buildFrPdf(x,photos){
 }
 const FR_DIRECTORS='Directors: M. Laing, D. Laing, G. Laing, N. Laing-Kublalsingh, L. Laing';
 const frLh=()=>`<div class="lh" style="background-image:url(data:image/jpeg;base64,${FR_BG})"></div><div class="cw" aria-hidden="true">CONFIDENTIAL</div>`;
-const frSec=s=>`<h3 class="hs">${esc(s.h)}</h3><div class="tw"><table class="frt"><tbody>${s.rows.map(([k,v])=>`<tr><th scope="row">${esc(k)}</th><td>${esc(v)}</td></tr>`).join('')}</tbody></table></div>`;
+const frWhyPics=(ph,w)=>{const l=(ph||[]).filter(p=>p.why===w);return l.length?`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">${l.map(p=>`<a target="_blank" rel="noopener"><img data-frp="${esc(p.key)}" alt="Picture for Why ${w}" style="width:200px;max-width:100%;border:1px solid #bbb;background:#f4f4f4;min-height:80px"></a>`).join('')}</div>`:''};
+const frSec=(s,ph)=>`<h3 class="hs">${esc(s.h)}</h3><div class="tw"><table class="frt"><tbody>${s.rows.map(([k,v,w])=>`<tr><th scope="row">${esc(k)}</th><td>${esc(v)}${w&&ph?frWhyPics(ph,w):''}</td></tr>`).join('')}</tbody></table></div>`;
+const frWhyPicsEdit=(ph,w)=>{const l=(ph||[]).filter(p=>p.why===w);return l.length?`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">${l.map(p=>`<label style="width:150px;display:block"><img data-frp="${esc(p.key)}" alt="Picture for Why ${w}" style="width:100%;height:100px;object-fit:cover;border:1px solid #bbb;background:#f4f4f4"><span style="display:flex;gap:6px;align-items:center;font-size:12px"><input type="checkbox" name="rmph" value="${esc(p.key)}"> Remove</span></label>`).join('')}</div>`:''};
 function viewFr(){
   const x=S.downtime.find(r=>r.id===view.id);
   if(!x) return `<div class="panel"><div class="empty">Failure report not found.</div></div>`;
-  const d=frData(x);
+  const d=frData(x),gp=d.photos.filter(p=>!p.why),recs=d.recs.length?d.recs:[''];
+  const txt=(id,v,ph)=>`<input id="${id}" name="${id}" type="text" value="${esc(v||'')}" maxlength="300" autocomplete="off" placeholder="${ph}">`;
+  const rr=d.sections[1].rows;
+  const repair=`<h3 class="hs">Repairs based on Shutdown alarm</h3><div class="tw"><table class="frt"><tbody>
+    <tr><th scope="row"><label for="tech">${esc(rr[0][0])}</label></th><td>${txt('tech',x.techAssigned,'Name of the technician')}</td></tr>
+    ${[1,2,3,4,5].map(i=>`<tr><th scope="row"><label for="ewhy${i}">${i}. Why it failed</label></th><td><input id="ewhy${i}" name="ewhy_" type="text" value="${esc(d.whys[i-1]||'')}" maxlength="300" autocomplete="off" placeholder="Why ${i}"><div class="whyrow" style="margin-top:6px"><label class="btn sm ghost" style="cursor:pointer">+ Picture<input type="file" name="ewhyph${i}" accept="image/*" multiple hidden></label> <span class="whyfn" style="font-size:12px"></span></div>${frWhyPicsEdit(d.photos,i)}</td></tr>`).join('')}
+  </tbody></table></div>`;
+  const ee=eq(x.equip),canClose=!d.done&&ee&&ee.status==='On rental';
+  const sd=d.sections[0],ein=(id,type,v,extra)=>`<input id="${id}" name="${id}" type="${type}" value="${esc(v==null?'':v)}" ${extra||''}>`;
+  const shutSec=`<h3 class="hs">${esc(sd.h)}</h3><div class="tw"><table class="frt"><tbody>${sd.rows.slice(0,-4).map(([k,v])=>`<tr><th scope="row">${esc(k)}</th><td>${esc(v)}</td></tr>`).join('')}
+    <tr><th scope="row"><label for="sdStart">Date of shutdown</label></th><td>${ein('sdStart','date',x.start,'max="'+today()+'" required')}</td></tr>
+    <tr><th scope="row"><label for="sdHrs">Current run hours</label></th><td>${ein('sdHrs','number',x.hoursAt,'min="0" step="any" inputmode="decimal"')}</td></tr>
+    <tr><th scope="row"><label for="sdBy">Failure reported by</label></th><td>${ein('sdBy','text',x.reportedBy,'maxlength="120" autocomplete="off"')}</td></tr>
+    <tr><th scope="row"><label for="sdNote">Shutdown Alarm</label></th><td><textarea id="sdNote" name="sdNote" rows="2" maxlength="400">${esc(x.note||'')}</textarea></td></tr></tbody></table></div>`;
+  const closeSec=canClose?`<h3 class="hs">Close the failure report</h3><div class="hint" style="margin:6px 0">Leave this section blank to keep the report open and keep working on it. When the unit is repaired, choose what happens to it and press <b>Close report &amp; release unit</b>.</div><div class="tw"><table class="frt"><tbody>
+    <tr><th scope="row">Decision after the repair</th><td>
+      <label class="opt"><input type="radio" name="cnext" value="restart"> <b>Restart on site.</b> The unit stays on the project and goes back to <b>On rental</b>.</label>
+      <label class="opt"><input type="radio" name="cnext" value="yard"> <b>Demobilize back to Laing Workshop.</b> The unit leaves the project and takes the status you choose below.</label></td></tr>
+    <tr id="c-restdate" hidden><th scope="row"><label for="cDate">Restart date</label></th><td><input id="cDate" name="cDate" type="date" value="${esc(today())}" max="${esc(today())}"></td></tr>
+    <tr id="c-yard" hidden><th scope="row">Return to the yard</th><td>
+      <label class="opt">Demobilisation date<br><input id="cyDate" name="cyDate" type="date" value="${esc(today())}"></label>
+      <label class="opt">Equipment status at the yard<br><select id="cyStatus" name="cyStatus">${['To be assessed','Level 1 service','Level 2 service','Level 3 service','Available'].map(o=>`<option>${o}</option>`).join('')}</select></label>
+      <label class="opt">Yard location (optional)<br><input id="cyLoc" name="cyLoc" type="text" value="${esc((ee&&ee.location)||'')}" autocomplete="off"></label></td></tr>
+  </tbody></table></div>`:'';
+  const save=`<button class="btn pri" type="submit" form="frm">${d.done?'Save':'Save for later'}</button>${canClose?`<button class="btn" type="button" data-act="frclose">Close report &amp; release unit</button>`:''}`;
   return `<button class="link back" data-act="frback">‹ Back</button><h2>Failure report ${esc(d.no)}</h2>
-  <div class="hint">${d.done?'Complete. The unit has been restarted or released from site.':'Open. It is completed when the unit is restarted on site or demobilised.'}</div>
-  <div class="actions"><button class="btn pri" data-act="fredit" data-id="${esc(x.id)}">Update report</button><button class="btn" data-act="frpdf" data-id="${esc(x.id)}">Download PDF</button><button class="btn" data-act="frdoc" data-id="${esc(x.id)}">Download Word</button><label class="btn" style="cursor:pointer">+ Add pictures (optional)<input type="file" id="frAdd" accept="image/*" multiple hidden></label></div>
-  <div class="frdoc">${frLh()}<div class="bd"><div class="ttl"><span>FAILURE REPORT</span></div><div class="no">Failure Report No. <u>${esc(d.no)}</u></div>
-  ${d.sections.map(frSec).join('')}
-  ${d.steps.length?`<h3 class="hs">Troubleshooting steps</h3><div class="tw"><table class="frt rec"><thead><tr><th style="width:70px;text-align:center">Step</th><th>What was checked or done</th></tr></thead><tbody>${d.steps.map((r,i)=>`<tr><th scope="row" style="text-align:center">${i+1}</th><td>${esc(r)}</td></tr>`).join('')}</tbody></table></div>`:''}
-  <h3 class="hs">Recommendations</h3><div class="tw"><table class="frt rec"><thead><tr><th style="width:70px;text-align:center">#</th><th>Recommendation</th></tr></thead><tbody>${(d.recs.length?d.recs:['']).map((r,i)=>`<tr><th scope="row" style="text-align:center">${r?'#'+(i+1):''}</th><td>${esc(r)}</td></tr>`).join('')}</tbody></table></div>
-  ${frSec(d.after)}
-  ${d.photos.length?`<h3 class="hs">Photographic evidence</h3><div style="display:flex;gap:10px;flex-wrap:wrap">${d.photos.map((p,i)=>`<figure style="margin:0;width:230px"><a target="_blank" rel="noopener"><img data-frp="${esc(p.key)}" alt="Evidence photo ${i+1}" style="width:100%;border:1px solid #bbb;background:#f4f4f4;min-height:120px"></a><figcaption style="font-size:12px;color:#333">Photo ${i+1} · ${esc(p.name||'')}</figcaption></figure>`).join('')}</div>`:''}</div><div class="ft">${FR_DIRECTORS}</div></div>`;
+  <div class="hint">${d.done?'Complete. The unit has been restarted or released from site.':'Open. The unit stays shut down until you close this report.'} Every field below can be edited. ${d.done?'Press Save to update the report.':'Press <b>Save for later</b> to keep your work and come back to it, or close the report when the unit is ready.'} Saving updates the report and adds it to the equipment history, which also shows in the project history.</div>
+  <div class="actions">${save}<button class="btn" type="button" data-act="frpdf" data-id="${esc(x.id)}">Download PDF</button><button class="btn" type="button" data-act="frdoc" data-id="${esc(x.id)}">Download Word</button></div>
+  <form id="frm" autocomplete="off"><div class="frdoc">${frLh()}<div class="bd"><div class="ttl"><span>FAILURE REPORT</span></div><div class="no">Failure Report No. <u>${esc(d.no)}</u></div>
+  ${shutSec}
+  ${repair}
+  <h3 class="hs">Recommendations</h3><div id="erecs" class="recbox">${recs.map((v,i)=>recRow('e',i+1,v)).join('')}</div><div style="margin-top:8px"><button type="button" class="btn sm" data-act="recadd" data-pf="e">+ Add recommendation</button></div>
+  ${canClose?closeSec:frSec(d.after)}
+  <h3 class="hs">Photographic evidence</h3>
+  ${gp.length?`<div style="display:flex;gap:10px;flex-wrap:wrap">${gp.map((p,i)=>`<label style="width:150px;display:block"><img data-frp="${esc(p.key)}" alt="Evidence photo ${i+1}" style="width:100%;height:100px;object-fit:cover;border:1px solid #bbb;background:#f4f4f4"><span style="display:flex;gap:6px;align-items:center;font-size:12px"><input type="checkbox" name="rmph" value="${esc(p.key)}"> Remove · Photo ${i+1}</span></label>`).join('')}</div>`:''}
+  <label class="f" style="margin-top:8px"><span>Add pictures (optional, up to 10 in total)</span><input type="file" id="ephotos" name="ephotos" accept="image/*" multiple></label>
+  <div id="ephotos-prev" class="frprev" style="display:flex;gap:8px;flex-wrap:wrap"></div>
+  </div><div class="ft">${FR_DIRECTORS}</div></div>
+  <div class="actions">${save}<button class="btn ghost" type="button" data-act="frback">Back</button></div></form>`;
 }
 const histKind=t=>RENT_START.test(t)?'rent':/^Shutdown on site/.test(t)?'down':/^Restarted on site/.test(t)?'restart':/^(Demobilised from|Returned from rental)/.test(t)?'demob':'gen';
 const histDown=t=>{const m=/^Shutdown on site — (.*?) \(reported by (.*?) · (.*?) run hrs\)(.*)$/s.exec(t||'');return m?{fail:m[1],rpt:m[2],hrs:m[3],rest:m[4]}:null};
@@ -1799,20 +1944,6 @@ function certHist(e,text,issued,prefixes){
   if(ix<0)return hist(e,text,issued||undefined);
   return h.map((x,j)=>j===ix?{...x,d:issued||x.d,t:text}:x).map((x,i)=>[x,i]).sort((a,b)=>(a[0].d||'').localeCompare(b[0].d||'')||a[1]-b[1]).map(x=>x[0]);
 }
-let PLH=[];
-function viewPlHist(){
-  const code=view.id,ev=projLogEvents(code);
-  PLH=ev.filter(x=>x.src||x.ei!==undefined);
-  const ro=ev.filter(x=>!(x.src||x.ei!==undefined));
-  const inp='font-size:16px;padding:8px 10px;border:2px solid var(--line);border-radius:4px;background:var(--surface);color:var(--ink)';
-  return `<button class="link back" data-act="plbk">‹ Back to project log</button><h2>Edit log history · ${esc(code)}</h2>
-  <div class="hint">Change the date or the text of any entry, then press Save once. Entries that come from a unit's <b>equipment history</b> are changed there too (shutdown, restart and demobilisation entries also update their failure report). Entries from job cards, material requisitions and the project dates are edited on their own pages.</div>
-  <form id="frm" autocomplete="off">
-  ${PLH.map((x,n)=>`<div class="panel hrow" data-n="${n}" style="padding:10px 12px;margin:8px 0"><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><input type="date" class="hd" value="${esc(x.src?x.src.d:x.d)}" required aria-label="Date of entry ${n+1}" style="${inp}"><span class="chip info">${esc(x.src?x.src.e:'Project')}</span><span class="chip">${esc(x.kind)}</span>${x.src?'<span class="chip info">also changes the equipment history</span>':''}</div><textarea class="ht" rows="2" required style="width:100%;margin-top:8px;${inp}">${esc(x.src?x.src.t:x.t)}</textarea></div>`).join('')||'<div class="empty">Nothing to edit yet.</div>'}
-  ${ro.length?`<div class="hint" style="margin-top:14px"><b>Not edited here</b> (${ro.length}): ${[...new Set(ro.map(x=>x.kind))].join(', ')}</div>`:''}
-  <div class="actions"><button class="btn pri" type="submit">Save all changes</button><button class="btn ghost" type="button" data-act="plbk">Cancel</button></div>
-  </form>`;
-}
 function viewHistAll(){
   const e=eq(view.id); if(!e) return viewDetail();
   let lastR=-1;(e.history||[]).forEach((x,j)=>{if(RENT_START.test(x.t||''))lastR=j});
@@ -1828,17 +1959,14 @@ const tsRow=(i,v)=>`<div class=\"tsrow\" style=\"display:flex;gap:8px;align-item
 function viewFrEdit(){
   const x=S.downtime.find(r=>r.id===view.id);
   if(!x) return `<div class=\"panel\"><div class=\"empty\">Failure report not found.</div></div>`;
-  const d=frData(x),steps=d.steps.length?d.steps:[''],recs=d.recs.length?d.recs:[''];
+  const d=frData(x),recs=d.recs.length?d.recs:[''];
   return `<button class=\"link back\" data-act=\"frview\" data-id=\"${esc(x.id)}\">‹ Back to report</button><h2>Update failure report ${esc(d.no)}</h2>
-  <div class=\"hint\">Change any detail, add troubleshooting steps or add and remove pictures. Nothing here is required. The unit's status is not changed.</div>
+  <div class=\"hint\">Change any detail or add and remove pictures. Nothing here is required. The unit's status is not changed.</div>
   <form id=\"frm\" autocomplete=\"off\">
-    ${area('cause','Reason for the failure',x.failureReason,'maxlength=\"400\" placeholder=\"What caused the failure\"')}
-    ${fld('parts','Part/s that failed','text',x.failureParts,'maxlength=\"300\" autocomplete=\"off\" placeholder=\"e.g. Thermostat, radiator hose (type None if no part failed)\"')}
-    <div class=\"f\"><span>Troubleshooting steps (in the order they were done)</span><div id=\"tsbox\" class=\"stack\">${steps.map((v,i)=>tsRow(i+1,v)).join('')}</div><div><button type=\"button\" class=\"btn sm\" data-act=\"tsadd\">+ Add step</button></div></div>
-    ${area('fix','Corrective measures',x.corrective,'maxlength=\"400\" placeholder=\"What was done to fix it\"')}
     ${fld('tech','Technician assigned to repair','text',x.techAssigned,'autocomplete=\"off\" placeholder=\"Name of the technician\"')}
+    <div class=\"f\"><span>Why it failed (up to 5 whys)</span><div class=\"stack\">${[0,1,2,3,4].map(k=>whyRow('e',k+1,d.whys[k]||'',false)).join('')}</div></div>
     <div class=\"f\"><span>Recommendations</span><div id=\"erecs\" class=\"stack\">${recs.map((v,i)=>recRow('e',i+1,v)).join('')}</div><div><button type=\"button\" class=\"btn sm\" data-act=\"recadd\" data-pf=\"e\">+ Add recommendation</button></div></div>
-    ${d.photos.length?`<div class=\"f\"><span>Current pictures (tick to remove)</span><div style=\"display:flex;gap:10px;flex-wrap:wrap\">${d.photos.map((p,i)=>`<label style=\"width:130px;display:block\"><img data-frp=\"${esc(p.key)}\" alt=\"Picture ${i+1}\" style=\"width:100%;height:96px;object-fit:cover;border:1px solid var(--line);border-radius:4px;background:#f4f4f4\"><span style=\"display:flex;gap:6px;align-items:center;font-size:12px\"><input type=\"checkbox\" name=\"rmph\" value=\"${esc(p.key)}\"> Remove</span></label>`).join('')}</div></div>`:''}
+    ${d.photos.length?`<div class=\"f\"><span>Current pictures (tick to remove)</span><div style=\"display:flex;gap:10px;flex-wrap:wrap\">${d.photos.map((p,i)=>`<label style=\"width:130px;display:block\"><img data-frp=\"${esc(p.key)}\" alt=\"Picture ${i+1}\" style=\"width:100%;height:96px;object-fit:cover;border:1px solid var(--line);border-radius:4px;background:#f4f4f4\"><span style=\"display:flex;gap:6px;align-items:center;font-size:12px\"><input type=\"checkbox\" name=\"rmph\" value=\"${esc(p.key)}\"> Remove${p.why?' (Why '+p.why+')':''}</span></label>`).join('')}</div></div>`:''}
     <label class=\"f\"><span>Add pictures (optional, up to ${10} in total)</span><input type=\"file\" id=\"ephotos\" name=\"ephotos\" accept=\"image/*\" multiple></label>
     <div id=\"ephotos-prev\" class=\"frprev\" style=\"display:flex;gap:8px;flex-wrap:wrap\"></div>
     <div class=\"actions\"><button class=\"btn pri\" type=\"submit\">Save report</button><button class=\"btn ghost\" type=\"button\" data-act=\"frview\" data-id=\"${esc(x.id)}\">Cancel</button></div>
@@ -1856,21 +1984,19 @@ function viewRestart(){
   <h2>Failure report · restart or demobilise</h2>
   <div class="hint">This is the failure report for ${esc(label(e))}. The shutdown details are filled in. Complete the restart and repair details below. The report is saved as ${esc(d.no||'a failure report')} and appears on the Project page.</div>
   <form id="frm" autocomplete="off"><div class="frdoc">${frLh()}<div class="bd"><div class="ttl"><span>FAILURE REPORT</span></div><div class="no">Failure Report No. <u>${esc(d.no||'to be assigned')}</u></div>
-  ${frSec(d.sections[0])}${frSec(d.sections[1])}
-  <h3 class="hs">3 · Based on the failure, select the next step</h3><div class="tw"><table class="frt"><tbody>
+  ${frSec(d.sections[0])}
+  <h3 class="hs">Decision after the repair</h3><div class="tw"><table class="frt"><tbody>
     <tr><th scope="row">Choose one</th><td>
       <label class="opt"><input type="radio" name="rnext" value="restart" required> <b>Restart on site.</b> The unit stays on the project and goes back to <b>On rental</b>.</label>
       <label class="opt"><input type="radio" name="rnext" value="yard" required> <b>Demobilize back to Laing Workshop.</b> The unit leaves the project and takes the status you choose below.</label></td></tr>
   </tbody></table></div>
   <div id="r-after" hidden>
   <div id="r-repair">
-  <h3 class="hs">Restart and repair</h3><div class="tw"><table class="frt"><tbody>
+  <h3 class="hs">Repairs based on Shutdown alarm</h3><div class="tw"><table class="frt"><tbody>
     <tr id="r-restdate"><th scope="row"><label for="rDate">Restart date</label></th><td><input id="rDate" name="rDate" type="date" value="${esc(today())}" min="${esc(r.start||'')}" max="${esc(today())}"></td></tr>
-    <tr><th scope="row"><label for="rcause">Reason for the failure</label></th><td>${ta('rcause','What caused the failure')}</td></tr>
-    <tr><th scope="row"><label for="rparts">Part/s that failed</label></th><td>${inp('rparts','text','required maxlength="300" placeholder="e.g. Thermostat, radiator hose (type None if no part failed)"')}</td></tr>
-    <tr><th scope="row"><label for="rphotos">Evidence pictures (optional, up to 10)</label></th><td>${inp('rphotos','file','accept="image/*" multiple')}<div id="rphotos-prev" class="frprev" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px"></div></td></tr>
-    <tr><th scope="row"><label for="rfix">Corrective measures</label></th><td>${ta('rfix','What was done to fix it')}</td></tr>
     <tr><th scope="row"><label for="rtech">Technician assigned to repair</label></th><td>${inp('rtech','text','required autocomplete="off" placeholder="Name of the technician"')}</td></tr>
+    ${[1,2,3,4,5].map(i=>`<tr><th scope="row"><label for="rwhy${i}">${i}. Why it failed</label></th><td><input id="rwhy${i}" name="rwhy_" type="text" maxlength="300" ${i===1?'required ':''}autocomplete="off" placeholder="Why ${i}"><div class="whyrow" style="margin-top:6px"><label class="btn sm ghost" style="cursor:pointer">+ Picture<input type="file" name="rwhyph${i}" accept="image/*" multiple hidden></label> <span class="whyfn" style="font-size:12px"></span></div></td></tr>`).join('')}
+    <tr><th scope="row"><label for="rphotos">Evidence pictures (optional, up to 10)</label></th><td>${inp('rphotos','file','accept="image/*" multiple')}<div id="rphotos-prev" class="frprev" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px"></div></td></tr>
   </tbody></table></div>
   <h3 class="hs">Recommendations</h3><div id="rrecs" class="recbox">${recRow('r',1,'')}</div><div style="margin-top:8px"><button type="button" class="btn sm" data-act="recadd" data-pf="r">+ Add recommendation</button></div>
   </div>
@@ -1878,7 +2004,6 @@ function viewRestart(){
     <tr id="r-yard" hidden><th scope="row">Return to the yard</th><td>
       <label class="opt">Demobilisation date<br><input id="ryDate" name="ryDate" type="date" value="${esc(today())}"></label>
       <label class="opt">Equipment status at the yard<br><select id="ryStatus" name="ryStatus">${['To be assessed','Level 1 service','Level 2 service','Level 3 service','Available'].map(o=>`<option>${o}</option>`).join('')}</select></label>
-      <label class="opt">Location it is removed from (on the rental)<br><input id="ryFrom" name="ryFrom" type="text" value="${esc(e.rentLoc||'')}" autocomplete="off"></label>
       <label class="opt">Yard location (optional)<br><input id="ryLoc" name="ryLoc" type="text" value="${esc(e.location||'')}" autocomplete="off"></label></td></tr>
   </tbody></table></div>
   </div>
@@ -1895,7 +2020,7 @@ function viewDown(){
   <form class="form" id="frm" autocomplete="off">
     ${fld('start','Shutdown date','date',x.start,'required')}
     ${fld('hoursAt','1 · Current run hours','number',x.hoursAt,'required min="0" step="any" inputmode="decimal"')}
-    ${area('note','2 · Brief description of failure',x.note,'required maxlength="400"')}
+    ${area('note','2 · Shutdown Alarm',x.note,'required maxlength="400"')}
     ${fld('reportedBy','3 · Failure reported by','text',x.reportedBy,'required autocomplete="off"')}
     ${x.frNo?`<div class="actions"><span class="chip info">Failure report ${esc(x.frNo)}</span><button class="btn sm" type="button" data-act="frview" data-id="${esc(x.id)}">View</button><button class="btn sm" type="button" data-act="frdoc" data-id="${esc(x.id)}">Word</button><button class="btn sm" type="button" data-act="frpdf" data-id="${esc(x.id)}">PDF</button>${x.end?'':`<button class="btn sm pri" type="button" data-act="restart" data-id="${esc(x.id)}">Restart on site</button>`}</div>`:''}
     <div class="actions"><button class="btn pri" type="submit">Save</button><button class="btn ghost" type="button" data-act="open" data-id="${esc(e.id)}">Cancel</button>
@@ -1917,7 +2042,7 @@ function viewDetail(){
   ${lateDays(e)?`<div class="notice" role="alert"><b>Return overdue.</b> ${esc(label(e))} was due to be demobilised on ${esc(fd(e.dueBack))} and is ${lateDays(e)} day${lateDays(e)===1?'':'s'} past that date${e.project?' (project '+esc(e.project)+')':''}${e.customer?' · '+esc(e.customer):''}.</div>`:''}
   ${isSold(e)&&isRepair(e.status)?`<div class="notice">Sold${e.sale&&e.sale.buyer?' to '+esc(e.sale.buyer):''}. This unit is in service for repair and goes back to Sold when its job card is closed.</div>`:''}
   <div class="actions">${e.status==='Sold'?`<button class="btn pri" data-act="unsell" data-id="${esc(e.id)}">${confirmDel?'Click again to reverse the sale':'Reverse sale'}</button><button class="btn" data-act="go" data-v="ticketnew" data-id="${esc(e.id)}">Log job card (repair)</button>`:`${isRepair(e.status)?(()=>{const oj=openJobFor(e.id);return `<button class="btn" type="button" disabled aria-disabled="true" title="Locked while the unit is in service or to be assessed">Change status · locked</button>${oj?`<button class="btn pri" data-act="tkt" data-id="${esc(oj.id)}">Open job card ${esc(oj.id)}</button>`:`<button class="btn pri" data-act="go" data-v="ticketnew" data-id="${esc(e.id)}">Log job card</button>`}<span class="hint" style="align-self:center">Status can only be changed from the job card.</span>`})():`<button class="btn pri" data-act="go" data-v="status" data-id="${esc(e.id)}">Change status</button>`}`}
-    ${e.status==='On rental'?`<button class="btn" data-act="go" data-v="status" data-id="${esc(e.id)}" data-dates="1">Update rental dates</button><button class="btn" data-act="go" data-v="demob" data-id="${esc(e.id)}">Demobilise</button>`:''}
+    ${e.status==='On rental'?`<button class="btn" data-act="go" data-v="status" data-id="${esc(e.id)}" data-dates="1">Update rental dates</button>`:''}
     ${e.status==='On rental'||isSold(e)||e.type==='Skid / CCU'?'':e.skid?`<button class="btn" data-act="uninstall" data-id="${esc(e.id)}">Remove from ${esc(e.skid)}</button>`:`<button class="btn" data-act="go" data-v="install" data-eq="${esc(e.id)}">Install in skid / CCU</button>`}
     ${e.type==='Skid / CCU'&&sk(e.id)&&!sk(e.id).retired&&!isSold(e)?`<button class="btn pri" data-act="go" data-v="install" data-sk="${esc(e.id)}">Install equipment in ${esc(e.id)}</button>`:''}
     <button class="btn ghost" data-act="go" data-v="edit" data-id="${esc(e.id)}">Edit details</button></div>
@@ -2080,17 +2205,25 @@ function pickUnits(cands,pre,withPrice){
   <div class="panel pickbox" id="selbox">${cands.map(e=>`<label class="pickrow" data-ty="${esc(e.type||'')}" data-t="${esc([e.id,label(e),e.serial,e.type,e.skid].join(' ').toLowerCase())}"><input type="checkbox" name="u" value="${esc(e.id)}" ${pre&&pre.includes(e.id)?'checked':''}><span><b class="code">${esc(e.id)}</b> ${esc(label(e))}<span class="sub">${esc([e.type,e.serial?'S/N '+e.serial:'',e.skid?'in '+e.skid:'',e.status].filter(Boolean).join(' · '))}</span></span></label>`).join('')}</div>
   <div class="hint"><span id="selcount">0 selected</span> · <span id="selshown">${cands.length} shown</span></div>`;
 }
+let frsCount=[0,0,0];
 function viewSales(){
-  const tab=['rent','sell','projedit','plog','sold','saleedit'].includes(view.tab)?view.tab:'rentals';
+  const tab=['rent','sell','projedit','plog','sold','saleedit','frs'].includes(view.tab)?view.tab:'rentals';
   const T=(k,l)=>`<button class="tab${tab===k||(k==='rentals'&&tab==='projedit')||(k==='sold'&&tab==='saleedit')?' on':''}" role="tab" aria-selected="${tab===k}" data-act="salestab" data-id="${k}">${l}</button>`;
-  const tabs=`<div class="tabs" role="tablist">${T('rentals','1 · Rental projects')}${T('rent','2 · New rental project')}${T('sell','3 · Sell equipment')}${T('plog','4 · Project log')}${T('sold','5 · Sold equipment')}</div>`;
+  const tabs=`<div class="tabs" role="tablist">${T('rentals','1 · Rental projects')}${T('rent','2 · New rental project')}${T('sell','3 · Sell equipment')}${T('plog','4 · Project log')}${T('sold','5 · Sold equipment')}${T('frs','6 · Failure reports')}</div>`;
   let body='';
   if(tab==='rentals'){
     const all=[...activeProjects(),...allProjCodes().filter(c=>!projClosed(c)&&!unitsOn(c).length).sort((a,b)=>a.localeCompare(b,undefined,{numeric:true})).map(c=>findProj('idle:'+c))],sel=F.sp&&all.some(p=>p.key===F.sp)?F.sp:'',groups=(sel?all.filter(p=>p.key===sel):all).filter(p=>(!F.spT||p.units.some(u=>(u.type||'Other')===F.spT))&&(!F.spS||spStat(p)===F.spS)),spTypes=[...new Set(all.flatMap(p=>p.units.map(u=>u.type||'Other')))].sort();
     body=`<div class="filters">${fSel('spT','All types',spTypes,F.spT||'')}${fSel('spS','All statuses',['On rental','Overdue','Idle (nothing out)'],F.spS||'')}</div><label class="f"><span>Show</span><select id="spSel" aria-label="Choose a rental project"><option value="">All projects (${all.length})</option>${all.map(p=>`<option value="${esc(p.key)}" ${p.key===sel?'selected':''}>${esc(projLabel(p))}</option>`).join('')}</select></label>
-    <div class="tablewrap"><table class="eqtable"><thead><tr><th>Client</th><th>Project code</th><th>Equipment</th><th>Project start</th><th>Project valid until</th><th>MRs</th><th></th></tr></thead><tbody>${groups.length?groups.map(p=>{const lateN=one(p.units.filter(u=>effStatus(u)==='Overdue')).length,late=lateN>0;return `<tr><td>${esc(p.customer||'—')}</td><td>${esc(p.project||'—')}</td><td class="ctr">${p.units.filter(u=>!(u.skid&&p.units.some(x=>x.id===u.skid&&x.type==='Skid / CCU'))).length}</td><td>${p.dateOut?fd(p.dateOut):'—'}</td><td>${p.dueBack?fd(p.dueBack):'—'}${late?' <span class="chip bad">'+lateN+' unit'+(lateN===1?'':'s')+' return overdue</span>':''}</td><td class="ctr">${mrsForProj(p.project).length}</td><td><button class="btn sm" data-act="projedit" data-id="${esc(p.key)}">Edit project</button></td></tr>`}).join(''):'<tr><td colspan="7" class="empty">No open projects. Use the New rental project tab.</td></tr>'}</tbody></table></div>
-    ${sel&&groups[0]?`<h2 style="font-size:22px">Equipment in this project</h2><div class="tablewrap"><table class="eqtable"><thead><tr><th>Equipment ID</th><th>Type</th><th>Make / Model</th><th>Serial no.</th><th>Location</th><th></th></tr></thead><tbody>${groups[0].units.filter(u=>!(u.skid&&groups[0].units.some(x=>x.id===u.skid&&x.type==='Skid / CCU'))).map(e=>`<tr class="eqrow" tabindex="0" data-act="open" data-id="${esc(e.id)}"><td>${idTag(e)+skContents(e)}</td><td>${esc(e.type||'—')}</td><td>${esc(label(e))}</td><td>${esc(e.serial||'—')}</td><td>${esc(e.location||'—')}</td><td><button class="btn sm" data-act="go" data-v="demob" data-id="${esc(e.id)}">Demobilise</button></td></tr>`).join('')}</tbody></table></div>`:'<div class="hint">Units rented to the same client with the same project code and date out are one rental project. Open projects with no equipment are listed too, until you close them in the Project log.</div>'}
+    <div class="tablewrap"><table class="eqtable"><thead><tr><th>Client</th><th>Project code</th><th>Equipment</th><th>Project start</th><th>Project valid until</th><th>MRs</th><th></th></tr></thead><tbody>${groups.length?groups.map(p=>{const lateN=p.units.filter(u=>effStatus(u)==='Overdue').length,late=lateN>0;return `<tr><td>${esc(p.customer||'—')}</td><td>${esc(p.project||'—')}</td><td class="ctr">${p.units.length}</td><td>${p.dateOut?fd(p.dateOut):'—'}</td><td>${p.dueBack?fd(p.dueBack):'—'}${late?' <span class="chip bad">'+lateN+' unit'+(lateN===1?'':'s')+' return overdue</span>':''}</td><td class="ctr">${mrsForProj(p.project).length}</td><td><button class="btn sm" data-act="projedit" data-id="${esc(p.key)}">Edit project</button></td></tr>`}).join(''):'<tr><td colspan="7" class="empty">No open projects. Use the New rental project tab.</td></tr>'}</tbody></table></div>
+    ${sel&&groups[0]?`<h2 style="font-size:22px">Equipment in this project</h2><div class="tablewrap"><table class="eqtable"><thead><tr><th>Equipment ID</th><th>Type</th><th>Make / Model</th><th>Serial no.</th><th>Location</th><th></th></tr></thead><tbody>${groups[0].units.map(e=>`<tr class="eqrow" tabindex="0" data-act="open" data-id="${esc(e.id)}"><td>${idTag(e)}</td><td>${esc(e.type||'—')}</td><td>${esc(label(e))}</td><td>${esc(e.serial||'—')}</td><td>${esc(e.location||'—')}</td><td><button class="btn sm" data-act="go" data-v="demob" data-id="${esc(e.id)}">Demobilise</button></td></tr>`).join('')}</tbody></table></div>`:'<div class="hint">Units rented to the same client with the same project code and date out are one rental project. Open projects with no equipment are listed too, until you close them in the Project log.</div>'}
     ${sel&&groups[0]?frPanel(groups[0].project,'rentals')+mrPanel(mrsProject(groups[0].project),'Material requisitions for project '+groups[0].project+' (PDF copies)'):''}`;
+  } else if(tab==='frs'){
+    const all=S.downtime.filter(x=>x.frNo).sort((a,b)=>String(b.frNo).localeCompare(String(a.frNo),undefined,{numeric:true}));
+    const projs=[...new Set(all.map(x=>x.project||'').filter(Boolean))].sort((a,b)=>a.localeCompare(b,undefined,{numeric:true})),types=[...new Set(all.map(x=>(eq(x.equip)||{}).type||'Other'))].sort();
+    const l=all.filter(x=>(!F.frP||x.project===F.frP)&&(!F.frS||(F.frS==='Open'?!x.end:!!x.end))&&(!F.frT||((eq(x.equip)||{}).type||'Other')===F.frT));
+    frsCount=[all.length,all.filter(x=>!x.end).length,all.filter(x=>x.end).length];
+    body=`<div class="filters">${fSel('frP','All projects',projs,F.frP||'')}${fSel('frT','All equipment types',types,F.frT||'')}${fSel('frS','All statuses',['Open','Complete'],F.frS||'')}</div>
+    <div class="tablewrap"><table class="eqtable"><thead><tr><th>Report no.</th><th>Project code</th><th>Client</th><th>Equipment</th><th>Shutdown date</th><th>Restarted on</th><th>Demobilised on</th><th>Days</th><th>Technician</th><th>Cause</th><th>Status</th><th></th></tr></thead><tbody>${l.length?l.map(x=>{const d=Math.max(0,daysBetween(x.start,x.end||today()));return `<tr><td><span class="code">${esc(x.frNo)}</span></td><td>${esc(x.project||'—')}</td><td>${esc(x.customer||'—')}</td><td>${esc(x.equip)}</td><td>${x.start?fd(x.start):'—'}</td><td>${x.end&&x.releasedBy!=='demob'&&x.outcome!=='yard'?fd(x.end):'—'}</td><td>${x.end&&(x.releasedBy==='demob'||x.outcome==='yard')?fd(x.end):'—'}</td><td class="ctr">${d}</td><td>${esc(x.techAssigned||'—')}</td><td>${esc(x.failureReason||'—')}</td><td><span class="chip ${x.end?'ok':'warn'}">${x.end?'Complete':'Open'}</span></td><td style="white-space:nowrap"><button class="btn sm" data-act="frview" data-id="${esc(x.id)}" data-from="frs">View</button> <button class="btn sm" data-act="frdoc" data-id="${esc(x.id)}">Word</button> <button class="btn sm" data-act="frpdf" data-id="${esc(x.id)}">PDF</button></td></tr>`}).join(''):'<tr><td colspan="12" class="empty">'+(all.length?'No failure reports match these filters.':'No failure reports yet. One is created each time a unit is shut down on site.')+'</td></tr>'}</tbody></table></div>`;
   } else if(tab==='sold'){
     const units=S.equipment.filter(isSold),ids=new Set(units.map(e=>e.id)),q=(F.soQ||'').toLowerCase();
     /* units sold together (a unit and its CCU / skid) are kept as one line: the unit that was sold is the head, the others point to it through sale.with */
@@ -2122,15 +2255,16 @@ function viewSales(){
     let log='';
     if(sel){
       const k=sel.toLowerCase();
-      const ev=projLogEvents(sel);
+      const ev=(PLR={},projLogEvents(sel));
       const units=S.equipment.filter(e=>e.status==='On rental'&&(e.project||'').toLowerCase()===k);
-      log=`<div class="hint"><b>${esc(sel)}</b> · ${one(units).length} unit${one(units).length===1?'':'s'} on rental now · ${mrsForProj(sel).length} material requisition${mrsForProj(sel).length===1?'':'s'} · ${ev.length} log entr${ev.length===1?'y':'ies'}</div>
-      <div class="tablewrap"><table class="eqtable"><thead><tr><th>Date</th><th>Type</th><th>Location</th><th>Reference</th><th>Entry</th></tr></thead><tbody>${ev.length?ev.map(x=>`<tr><td>${x.d?fd(x.d):'—'}</td><td>${x.kind}</td><td>${x.loc?esc(x.loc):'—'}</td><td><span class="code">${esc(x.ref)}</span>${(()=>{const q=eq(x.ref);return q&&q.skid?'<span class="sub" style="display:block">Installed in <b class="code">'+esc(q.skid)+'</b></span>':''})()}</td><td>${esc(x.t)}${(x.files&&x.files.length)||x.eid?`<div style="margin-top:4px">${plEvFiles(x)}${x.eid?` <button class="btn sm danger" data-act="plevdel" data-id="${esc(sel)}" data-eid="${esc(x.eid)}">Remove</button>`:''}</div>`:''}</td></tr>`).join(''):'<tr><td colspan="5" class="empty">Nothing logged for this project yet.</td></tr>'}</tbody></table></div>`+plAddPanel(sel)+plFilesPanel(sel)+frPanel(sel,'plog')+mrPanel(mrsProject(sel),'Material requisitions for project '+sel+' (PDF copies)');
+      log=`<div class="hint"><b>${esc(sel)}</b> · ${units.length} unit${units.length===1?'':'s'} on rental now · ${mrsForProj(sel).length} material requisition${mrsForProj(sel).length===1?'':'s'} · ${ev.length} log entr${ev.length===1?'y':'ies'}</div>${F.ple===sel?'<div class="hint"><b>Editing the project history.</b> Change the date, location or entry text of any row (material requisition rows are edited in their own record), use <b>+ Add row</b> to add an entry, <b>Remove</b> to take a row out, then press <b>Save changes</b> (added rows are saved then). Changed rows are marked <i>edited</i>; <b>Reset</b> puts the original back.</div>':''}
+      <div class="tablewrap"><table class="eqtable"><thead><tr><th>Date</th><th>Type</th><th>Location</th><th>Reference</th><th>Entry</th><th>PDF</th></tr></thead><tbody>${ev.length?ev.map(x=>{const ed=F.ple===sel&&(x.eid||x.ek);if(ed)PLR[x.eid||x.ek]=x;const ei='font-size:14px;padding:6px 8px;border:2px solid var(--accent);border-radius:4px;background:var(--surface);color:var(--ink);width:100%;box-sizing:border-box';return `<tr${ed?` data-ple="${esc(x.eid||x.ek)}"`:''}><td>${ed?`<input type="date" class="pleD" value="${esc(x.d||'')}" style="${ei};min-width:140px">`:(x.d?fd(x.d):'—')}</td><td>${x.kind}${x.edited?' <span class="chip warn">edited</span>':''}</td><td>${ed?`<input class="pleL" value="${esc(x.loc||'')}" style="${ei};min-width:120px">`:(x.loc?esc(x.loc):'—')}</td><td><span class="code">${esc(x.ref)}</span></td><td>${ed?`<textarea class="pleT" rows="3" style="${ei};min-width:260px">${esc(x.t)}</textarea>`:esc(x.t)}</td><td>${x.mr&&x.mr.pdf?`<button class="btn sm" data-act="mrpdf" data-id="${esc(x.mr.id)}">View</button> <button class="btn sm" data-act="mrpdfdl" data-id="${esc(x.mr.id)}">Download</button>`:''}${plEvFiles(x)}${x.eid?` <button class="btn sm danger" data-act="plevdel" data-id="${esc(sel)}" data-eid="${esc(x.eid)}">Remove</button>`:''}${ed&&x.ek?` <button class="btn sm danger" data-act="plehide" data-id="${esc(sel)}" data-ek="${esc(x.ek)}">Remove</button>`:''}${ed&&x.edited?` <button class="btn sm" data-act="plereset" data-id="${esc(sel)}" data-ek="${esc(x.ek)}">Reset</button>`:''}</td></tr>`}).join(''):'<tr><td colspan="6" class="empty">Nothing logged for this project yet.</td></tr>'}</tbody></table></div>${F.ple===sel?`<div class="actions" style="margin:8px 0 16px"><button class="btn" data-act="plenew" data-id="${esc(sel)}">+ Add row</button>${Object.values((projRec(sel)||{}).logEdits||{}).some(v=>v&&v.hidden)?`<button class="btn" data-act="plerestore" data-id="${esc(sel)}">Restore removed rows</button>`:''}<button class="btn pri" data-act="plesave" data-id="${esc(sel)}">Save changes</button><button class="btn" data-act="pledit" data-id="${esc(sel)}">Cancel</button></div>`:''}`+plAddPanel(sel)+plFilesPanel(sel)+frPanel(sel,'plog')+mrPanel(mrsProject(sel),'Material requisitions for project '+sel+' (PDF copies)');
     }
     const closed=sel&&projClosed(sel);
-    const sumRows=codes.map(c=>{const r=projRec(c)||{},u=unitsOn(c)[0]||{},cl=r.customer||u.customer||'',dO=r.dateOut||u.dateOut||'',dB=r.dueBack||u.dueBack||'';return `<tr class="eqrow" tabindex="0" data-act="plopen" data-id="${esc(c)}"><td>${esc(cl||'—')}</td><td><span class="code">${esc(c)}</span></td><td>${dO?fd(dO):'—'}</td><td>${dB?fd(dB):'—'}</td><td>${projClosed(c)?'<span class="chip off">Closed</span>':'<span class="chip ok">Open</span>'}</td></tr>`}).join('');
-    body=`<label class="f"><span>Project code</span><select id="plSel" aria-label="Choose a project code"><option value="">${codes.length?'All projects…':'No project codes yet'}</option>${codes.map(c=>`<option value="${esc(c)}" ${c===sel?'selected':''}>${esc(projOpt(c))}${projClosed(c)?' (closed)':''}</option>`).join('')}</select></label>
-    ${sel?`<div class="plbar"><span class="chip ${closed?'off':'ok'}">${closed?'Closed':'Open'}</span><button class="btn plb edit" data-act="plhist" data-id="${esc(sel)}"><span class="ic">✎</span>Edit log history</button><button class="btn plb pri" data-act="plpdf" data-id="${esc(sel)}"><span class="ic">⎙</span>Print log (PDF)</button>${closed?`<button class="btn plb ok" data-act="projopen" data-id="${esc(sel)}"><span class="ic">↺</span>Reopen project</button>`:`<button class="btn plb warn" data-act="projclose" data-id="${esc(sel)}"><span class="ic">✔</span>${confirmDel&&F.pd==='close'?'Click again to close':'Close project'}</button>`}<button class="btn plb danger" data-act="logdel" data-id="${esc(sel)}"><span class="ic">✖</span>${confirmDel&&F.pd==='log'?'Click again to delete':'Delete log'}</button><button class="btn plb danger" data-act="projdel" data-id="${esc(sel)}"><span class="ic">🗑</span>${confirmDel&&F.pd==='proj'?'Click again to delete':'Delete project'}</button></div><div class="plnote">A project stays open until you close it, even with no equipment on it. <b>Edit log history</b> changes the project log and, for equipment entries, the equipment history too.</div>${log}`:`<div class="tablewrap"><table class="eqtable"><thead><tr><th>Client</th><th>Project code</th><th>Date out</th><th>Date back</th><th>Status</th></tr></thead><tbody>${sumRows||'<tr><td colspan="5" class="empty">No projects yet.</td></tr>'}</tbody></table></div>`}`;
+    const pst=F.pst==='open'||F.pst==='closed'?F.pst:'';const fcodes=codes.filter(c=>!pst||(pst==='closed')===!!projClosed(c));
+    const sumRows=fcodes.map(c=>{const r=projRec(c)||{},u=unitsOn(c)[0]||{},cl=r.customer||u.customer||'',dO=r.dateOut||u.dateOut||'',dB=r.dueBack||u.dueBack||'';return `<tr class="eqrow" tabindex="0" data-act="plopen" data-id="${esc(c)}"><td>${esc(cl||'—')}</td><td><span class="code">${esc(c)}</span></td><td>${dO?fd(dO):'—'}</td><td>${dB?fd(dB):'—'}</td><td>${projClosed(c)?'<span class="chip off">Closed</span>':'<span class="chip ok">Open</span>'}</td></tr>`}).join('');
+    body=`<div class="actions" style="align-items:flex-end"><label class="f"><span>Project code</span><select id="plSel" aria-label="Choose a project code"><option value="">${fcodes.length?'All projects…':'No project codes'}</option>${fcodes.map(c=>`<option value="${esc(c)}" ${c===sel?'selected':''}>${esc(projOpt(c))}${projClosed(c)?' (closed)':''}</option>`).join('')}</select></label><label class="f"><span>Project status</span><select id="plSt" aria-label="Open or closed projects"><option value="" ${!pst?'selected':''}>Open &amp; closed</option><option value="open" ${pst==='open'?'selected':''}>Open projects</option><option value="closed" ${pst==='closed'?'selected':''}>Closed projects</option></select></label></div>
+    ${sel?`<div class="actions"><button class="btn uni" data-act="pledit" data-id="${esc(sel)}">${F.ple===sel?'Done editing':'Edit project'}</button>${closed?`<button class="btn uni" data-act="projopen" data-id="${esc(sel)}">Reopen project</button>`:`<button class="btn uni" data-act="projclose" data-id="${esc(sel)}">Close project</button>`}<button class="btn uni" data-act="plpdf" data-id="${esc(sel)}">Print log (PDF)</button><button class="btn uni" data-act="projdel" data-id="${esc(sel)}">${confirmDel&&F.pd==='proj'?'Click again to delete this project':'Delete project'}</button><span class="hint" style="align-self:center">A project stays open until you close it, even with no equipment on it.</span></div>${!closed&&F.pcl===sel?plClosePanel(sel):''}${log}`:`<div class="tablewrap"><table class="eqtable"><thead><tr><th>Client</th><th>Project code</th><th>Date out</th><th>Date back</th><th>Status</th></tr></thead><tbody>${sumRows||'<tr><td colspan="5" class="empty">No projects yet.</td></tr>'}</tbody></table></div>`}`;
   } else if(tab==='projedit'){
     const p=findProj(view.key);
     if(!p) body='<div class="panel"><div class="empty">That project no longer exists.</div></div>';
@@ -2139,8 +2273,8 @@ function viewSales(){
       body=`<form class="form" id="frm" autocomplete="off"><h2 style="font-size:22px">Edit rental project</h2><div class="hint">Client, project code, operator and fuel apply to every unit. The dates here are the project\u2019s validity. Each unit keeps its own delivery and demobilisation dates (set under Change status).</div>
       ${statusFields({customer:p.customer,project:p.project,dateOut:p.dateOut,dueBack:p.dueBack,duration:p.duration,durUnit:p.durUnit,shift:p.shift,operator:p.operator,fuel:p.fuel,fuelQty:p.fuelQty,noLoc:true},'On rental')}
       <div class="hint"><b>Equipment in this project</b> (tick any to return to Available)</div>
-      <div class="panel">${one(p.units).map(e=>`<label class="pickrow"><input type="checkbox" name="rm" value="${esc(e.id)}"><span><b class="code">${esc(e.id)}</b>${e.type==='Skid / CCU'&&inSkid(e.id).length?' + '+inSkid(e.id).map(x=>'<b class="code">'+esc(x.id)+'</b>').join(' + ')+' <small>(one unit)</small>':''} ${esc(label(e))}<span class="sub">${esc([e.type,e.serial?'S/N '+e.serial:''].filter(Boolean).join(' · '))}</span></span><span><input type="text" name="rmLoc_${esc(e.id)}" value="${esc(e.rentLoc||'')}" placeholder="Location removed from (required if ticked)" aria-label="Location ${esc(e.id)} is removed from" style="font-size:14px;padding:6px 8px;border:2px solid var(--line);border-radius:4px;background:var(--surface);color:var(--ink);min-width:220px"></span></label>`).join('')}</div>
-      ${c.length?'<div class="hint"><b>Add more equipment</b> to this project (optional)</div>'+pickUnits(c,[],false)+fld('addLoc','Location the added equipment is delivered to (required when you add equipment)','text','','placeholder="e.g. Well pad 3, Gate 2 compound, GPS"'):''}
+      <div class="panel">${p.units.map(e=>`<label class="pickrow"><input type="checkbox" name="rm" value="${esc(e.id)}"><span><b class="code">${esc(e.id)}</b> ${esc(label(e))}<span class="sub">${esc([e.type,e.serial?'S/N '+e.serial:''].filter(Boolean).join(' · '))}</span></span><span></span></label>`).join('')}</div>
+      ${c.length?'<div class="hint"><b>Add more equipment</b> to this project (optional)</div>'+pickUnits(c,[],false):''}
       <div class="actions"><button class="btn pri" type="submit">Save project</button><button class="btn ghost" type="button" data-act="salestab" data-id="rentals">Cancel</button></div></form>${p.project?mrPanel(S.mrs.filter(m=>(m.projCode||'').toLowerCase()===p.project.toLowerCase()),'Material requisitions for project '+p.project+' (PDF copies)'):''}`;
     }
   } else if(tab==='rent'){
@@ -2158,7 +2292,7 @@ function viewSales(){
     ${pickUnits(c,view.pre?[view.pre]:[],false)}
     <div class="actions"><button class="btn pri" type="submit">Confirm sale</button></div></form>`;
   }
-  return `<h2>Sales &amp; Rentals</h2>${tabs}${tab==='plog'&&F.pl&&allProjCodes().includes(F.pl)?projCnts(F.pl):salesCnts()}${body}`;
+  return `<h2>Sales &amp; Rentals</h2>${tabs}${tab==='frs'?cnts([[frsCount[0],'Failure reports'],[frsCount[1],'Open','warn'],[frsCount[2],'Complete','ok']]):tab==='plog'&&F.pl&&allProjCodes().includes(F.pl)?projCnts(F.pl):salesCnts()}${body}`;
 }
 function viewSell(){
   const e=eq(view.id); if(!e) return viewDetail();
@@ -2183,36 +2317,42 @@ function viewDemob(){
   <div class="hint">Takes the unit off the project and back to the yard. This is recorded in the equipment history and the project log.</div>
   <form class="form" id="frm" autocomplete="off">
     <div class="two">${fld('dmDate','Demobilisation date','date',today(),'required')}${sel('dmStatus','Unit returns as',['Available','To be assessed','Level 1 service','Level 2 service','Level 3 service'],'To be assessed')}</div>
-    <div class="two">${fld('dmFrom','Location it is removed from (on the rental)','text',e.rentLoc||'','required placeholder="e.g. Well pad 3, Gate 2 compound, GPS"')}${fld('dmLoc','Yard location','text',e.location||'')}</div>
-    <div class="two">${fld('dmHrs','Run hours at demobilisation (optional)','number',e.hours||'','min="0" step="any"')}</div>
+    <div class="two">${fld('dmLoc','Yard location','text',e.location||'')}${fld('dmHrs','Run hours at demobilisation (optional)','number',e.hours||'','min="0" step="any"')}</div>
     ${area('dmNote','Note (condition, damage, reason)','')}
     ${open?`<div class="hint"><b>This unit is shut down on site.</b> Complete the failure report${open.frNo?' '+esc(open.frNo):''} to demobilise it. The fields are required; pictures are optional.</div>${frFieldsHtml('d')}`:''}
     <div class="actions"><button class="btn pri" type="submit">Demobilise unit</button><button class="btn ghost" type="button" data-act="open" data-id="${esc(e.id)}">Cancel</button></div>
   </form>`;
 }
 function statusOptions(e){
-  if(e.status==='On rental'){if(view.dates)return ['On rental'];return isDown(e)?['To be assessed']:['Shutdown on site','To be assessed']}
+  if(e.status==='On rental'){if(view.dates)return ['On rental'];return isDown(e)?['To be assessed']:['Shutdown on site','Demobilise']}
   return STATUS_PICK.filter(x=>x!=='Shutdown on site'||e.status==='Shutdown on site');
 }
 const shutFields=(e,st)=>`<div id="g-shut" ${st==='Shutdown on site'?'':'hidden'} class="stack">
-    <div class="hint"><b>Shutdown on site.</b> The unit stays on rental and is logged as shut down from the date of shutdown until you restart it.</div>
-    ${fld('shutDate','1 · Date of shutdown','date',today())}
+    <div class="hint"><b>Shutdown on site.</b> The unit stays on rental and is logged as shut down from the date below until you restart it.</div>
+    ${fld('shutDate','1 · Date of shutdown','date',today(),'max="'+today()+'"')}
     ${fld('runhrs','2 · Current run hours','number',e.hours,'min="0" step="any" inputmode="decimal"')}
-    ${area('fail','3 · Brief description of failure','','maxlength="400" placeholder="What failed or what was observed"')}
+    ${area('fail','3 · Shutdown Alarm','','maxlength="400" placeholder="What failed or what was observed"')}
     ${fld('rptby','4 · Failure reported by','text','','autocomplete="off" placeholder="Name of the person who reported it"')}
+  </div>`;
+const demobFields=(e,st)=>`<div id="g-demob" ${st==='Demobilise'?'':'hidden'} class="stack">
+    <div class="hint"><b>Demobilise.</b> Takes the unit off the project and back to the yard. This is recorded in the equipment history and the project log.</div>
+    <div class="two">${fld('dmDate','Demobilisation date','date',today(),'')}${sel('dmStatus','Unit returns as',['Available','To be assessed','Level 1 service','Level 2 service','Level 3 service'],'To be assessed')}</div>
+    <div class="two">${fld('dmLoc','Yard location','text',e.location||'')}${fld('dmHrs','Run hours at demobilisation (optional)','number',e.hours||'','min="0" step="any"')}</div>
+    ${area('dmNote','Note (condition, damage, reason)','')}
   </div>`;
 function viewStatus(){
   const e=eq(view.id); if(!e) return viewDetail();
-  if(e.status==='On rental'&&isDown(e)&&!view.dates){const o=grpOpenDt(e)[0];if(o){view.n='restart';view.id=o.id;return viewRestart()}}
+  if(e.status==='On rental'&&isDown(e)&&!view.dates){const o=grpOpenDt(e)[0];if(o){view.n='fr';view.id=o.id;view.from='';return viewFr()}}
   const opts=statusOptions(e),cur=(view.presel&&opts.includes(view.presel))?view.presel:(opts.includes(e.status)?e.status:opts[0]);
   return `
   <button class="link back" data-act="open" data-id="${esc(e.id)}">‹ Back</button>
   <h2>${view.dates?'Update rental dates':'Change status'}</h2><div class="hint"><b>${esc(label(e))}</b> · ${idTag(e)}</div>
-  ${e.status==='On rental'&&!view.dates?`<div class="hint">${isDown(e)?'This unit is shut down on site. Restart it from the unit page when it is running again. From here it can only go to To be assessed.':'A unit on rental can only be changed to Shutdown on site or To be assessed. To return it to the yard use Demobilise on the unit page.'}</div>`:''}
+  ${e.status==='On rental'&&!view.dates?`<div class="hint">${isDown(e)?'This unit is shut down on site. Restart it from the unit page when it is running again. From here it can only go to To be assessed.':'A unit on rental can be changed to Shutdown on site or Demobilise (return it to the yard).'}</div>`:''}
   <form class="form" id="frm" autocomplete="off">
     ${sel('status','New status',opts,cur)}
     ${statusFields(e,cur,true)}
     ${shutFields(e,cur)}
+    ${demobFields(e,cur)}
     <div id="g-sell" ${cur==='Sold'?'':'hidden'} class="stack">
       <div class="hint"><b>Sell equipment.</b> The unit moves to <b>Sold</b>. It stays in the Equipment list for your records (filter by status Sold) and is left out of the counts on Home. You can reverse the sale later.</div>
       ${saleNotice(e)}
@@ -3035,7 +3175,7 @@ function projLogPdf(code){
   const newPage=first=>{cur=[];pages.push(cur);y=M;if(first){cur.push('q 120 0 0 '+(120*logoH/logoW).toFixed(2)+' '+M+' '+(PH-M-120*logoH/logoW).toFixed(2)+' cm /Im0 Do Q');
       ['Sandblasting & Painting Co. Ltd','LP#82 Cipero Road','Victoria Village, San Fernando','657-4007 / 657-2527'].forEach((s,i)=>T(s,175,M+14+i*14,10.5,true));y=M+120*logoH/logoW+12;
       cur.push('1 0.93 0 rg '+M+' '+(PH-y-22).toFixed(2)+' '+(PW-2*M)+' 24 re f 0 g');T('PROJECT LOG',PW/2-52,y+16,15,true);y+=34;
-      [['Project code',code],['Client',client||'—'],['Status',projClosed(code)?'Closed':'Open'],['Units on rental now',String(one(units).length)],['Material requisitions',String(mrs.length)],['Log entries',String(ev.length)],['Printed',fd(today())]].forEach(([k,v],i)=>{T(k+':',M,y+i*13,9.5,true);T(v,M+120,y+i*13,9.5)});y+=7*13+8}
+      [['Project code',code],['Client',client||'—'],['Status',projClosed(code)?'Closed':'Open'],['Units on rental now',String(units.length)],['Material requisitions',String(mrs.length)],['Log entries',String(ev.length)],['Printed',fd(today())]].forEach(([k,v],i)=>{T(k+':',M,y+i*13,9.5,true);T(v,M+120,y+i*13,9.5)});y+=7*13+8}
     else{T('Project log · '+code,M,y+8,9,true);y+=18}
     head()};
   const logo=Uint8Array.from(atob(LOGO.split(',')[1]),c=>c.charCodeAt(0)),sz=jpegSize(logo)||{w:300,h:116,c:3},logoW=sz.w,logoH=sz.h;
@@ -3064,7 +3204,7 @@ function projLogPdf(code){
 /* ---------- Project log counters (since the start of the project) ---------- */
 function projStats(code){
   const OUT=/^(Returned from rental|Demobilised|Sold to|Retired|Scrapped|Available|Level \d service|To be assessed|New\b)/,cur=new Set(unitsOn(code).map(e=>e.id));
-  const items=[];
+  let mob=0,now=0,dem=0,demShut=0,sh=0;
   S.equipment.forEach(e=>{
     const stints=[];let inP=false,from='';
     (e.history||[]).forEach(h=>{const t=h.t||'';
@@ -3072,40 +3212,18 @@ function projStats(code){
       if(inP&&OUT.test(t)&&!/^On rental/.test(t)){stints.push({from,to:h.d||''});inP=false}});
     if(inP)stints.push({from,to:'',open:true});
     if(cur.has(e.id)&&!(stints.length&&stints[stints.length-1].open))stints.push({from:'',to:'',open:true});
-    stints.forEach((s,i)=>items.push({e,s,i,last:stints.length-1}));
+    stints.forEach((s,i)=>{
+      const open=!!s.open&&cur.has(e.id)&&i===stints.length-1;
+      const dts=S.downtime.filter(x=>x.equip===e.id&&(!s.from||(x.start||'')>=s.from)&&(!s.to||(x.start||'')<=s.to));
+      mob++;sh+=dts.length;
+      if(open){now++;return}
+      dem++;
+      if(dts.some(x=>x.releasedBy==='demob'||(x.releasedBy!=='restart'&&x.end&&s.to&&x.end===s.to&&!(e.history||[]).some(h=>h.d===x.end&&/^Restarted on site/.test(h.t||'')))))demShut++;
+    });
   });
-  /* equipment installed in a Skid / CCU is what is counted (rented, shut down, demobilised, sold); the Skid / CCU itself is only counted when it is rented on its own, with nothing installed in it on this project */
-  const carrying=new Set(items.filter(x=>x.e.skid).map(x=>x.e.skid));
-  let mob=0,now=0,dem=0,demShut=0,sh=0;const L={mob:[],now:[],dem:[],demClean:[],demShut:[],sh:[]};
-  items.filter(x=>!(x.e.type==='Skid / CCU'&&carrying.has(x.e.id))).forEach(({e,s,i,last})=>{
-    const open=!!s.open&&cur.has(e.id)&&i===last;
-    const dts=S.downtime.filter(x=>x.equip===e.id&&(!s.from||(x.start||'')>=s.from)&&(!s.to||(x.start||'')<=s.to));
-    mob++;sh+=dts.length;
-    const rec={e,from:s.from,to:open?'':s.to,open,dts};L.mob.push(rec);dts.forEach(x=>L.sh.push({e,from:s.from,to:open?'':s.to,open,dt:x}));
-    if(open){now++;L.now.push(rec);return}
-    dem++;L.dem.push(rec);
-    if(dts.some(x=>x.releasedBy==='demob'||(x.releasedBy!=='restart'&&x.end&&s.to&&x.end===s.to&&!(e.history||[]).some(h=>h.d===x.end&&/^Restarted on site/.test(h.t||'')))))(demShut++,L.demShut.push(rec));else L.demClean.push(rec);
-  });
-  return {mob,now,dem,demClean:dem-demShut,demShut,sh,L};
+  return {mob,now,dem,demClean:dem-demShut,demShut,sh};
 }
-const PLC=[['mob','Total equipment mobilized',''],['now','Currently on rental','info'],['dem','Total demobilized',''],['demClean','Demobilized without shutdown','ok'],['demShut','Demobilized because of shutdown','bad'],['sh','Total shutdowns on site','warn']];
-const projCnts=code=>{
-  const s=projStats(code),sel=PLC.some(c=>c[0]===F.plc)?F.plc:'',n=k=>k==='sh'?s.sh:s[k];
-  const btns=`<div class="cnts" role="group" aria-label="Totals">${PLC.map(([k,l,c])=>`<button type="button" class="cnt${sel===k?' on':''}" data-act="plcnt" data-id="${k}" aria-pressed="${sel===k}" title="Show the equipment counted here"><b${c?` style="color:var(--${c})"`:''}>${n(k)}</b>${esc(l)}</button>`).join('')}</div>`;
-  let panel='';
-  if(sel){
-    const lab=PLC.find(c=>c[0]===sel)[1],rows=s.L[sel],isSh=sel==='sh';
-    const locOf=e=>esc(((e.rentLoc||e.location||'')+'').trim()||'—');
-    const eqc=e=>`<button type="button" class="btn sm" data-act="open" data-id="${esc(e.id)}" title="Open ${esc(e.id)}"><b class="code">${esc(e.id)}</b></button>${e.skid?'<span class="sub" style="display:block">Installed in <b class="code">'+esc(e.skid)+'</b></span>':''}`;
-    const st=r=>r.open?'<span class="sub" style="display:inline">still on site</span>':(r.to?fd(r.to):'—');
-    const body=rows.slice().sort((a,b)=>String(a.e.id).localeCompare(String(b.e.id),undefined,{numeric:true})).map(r=>isSh
-      ?`<tr><td>${eqc(r.e)}</td><td>${locOf(r.e)}</td><td>${esc(label(r.e))}</td><td>${r.dt.start?fd(r.dt.start):'—'}</td><td>${r.dt.end?fd(r.dt.end):'still shut down'}</td><td>${esc(r.dt.reason||'—')}</td></tr>`
-      :`<tr><td>${eqc(r.e)}</td><td>${locOf(r.e)}</td><td>${esc(label(r.e))}</td><td>${esc(r.e.type||'—')}</td><td>${r.from?fd(r.from):'—'}</td><td>${st(r)}</td>${sel==='demShut'?`<td>${r.dts.length}</td>`:''}</tr>`).join('');
-    const head=isSh?'<th>Equipment / Installed in</th><th>Location</th><th>Description</th><th>Shut down</th><th>Back / released</th><th>Reason</th>':'<th>Equipment / Installed in</th><th>Location</th><th>Description</th><th>Type</th><th>Mobilized</th><th>Demobilized</th>'+(sel==='demShut'?'<th>Shutdowns</th>':'');
-    panel=`<div class="hint"><b>${esc(lab)}</b> · ${rows.length} ${isSh?'shutdown'+(rows.length===1?'':'s'):'unit'+(rows.length===1?'':'s')} · <button type="button" class="btn sm ghost" data-act="plcnt" data-id="${sel}">Hide list</button></div>
-    <div class="tablewrap" style="margin-bottom:14px"><table class="eqtable"><thead><tr>${head}</tr></thead><tbody>${body||`<tr><td colspan="7">Nothing to show.</td></tr>`}</tbody></table></div>`;
-  }
-  return `<div class="hint">Counters for project <b>${esc(code)}</b>, from the start of the project. Press a counter to see the equipment it counts.</div>`+btns+panel};
+const projCnts=code=>{const s=projStats(code);return `<div class="hint">Counters for project <b>${esc(code)}</b>, from the start of the project</div>`+cnts([[s.mob,'Total equipment mobilized'],[s.now,'Currently on rental','info'],[s.dem,'Total demobilized'],[s.demClean,'Demobilized without shutdown','ok'],[s.demShut,'Demobilized because of shutdown','bad'],[s.sh,'Total shutdowns on site','warn']])};
 const projHas=(txt,code)=>new RegExp('(^|[^A-Za-z0-9])'+String(code).trim().replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'(?![A-Za-z0-9])','i').test(txt||'');
 /* ---------- Project log: pictures and PDFs ---------- */
 const PL_MAX=25,PL_PDF_MB=15;
@@ -3146,6 +3264,64 @@ async function plAddEntry(code){
   const r=projRec(code),out=[...cur,...added];
   const data=r?{...rowData(r),files:out,events:[...(r.events||[]),ev]}:{code,status:'Open',files:out,events:[ev]};
   if(await put('projects',r?r.id:projSlug(code),data)){toast('Added to the project log on '+fd(d));render()}
+}
+let PLR={};
+const plClosePanel=code=>{
+  const us=unitsOn(code).sort((a,b)=>a.id.localeCompare(b.id)),ei='font-size:15px;padding:8px 10px;border:2px solid var(--line);border-radius:4px;background:var(--surface);color:var(--ink);box-sizing:border-box';
+  if(!us.length)return `<div class="panel" style="padding:14px;margin:12px 0"><h2 style="font-size:22px;margin-top:0">Close project ${esc(code)}</h2><div class="hint">No equipment is on this project now.</div><div class="actions"><button class="btn pri" data-act="projcloseok" data-id="${esc(code)}">Close project</button><button class="btn" data-act="projcloseno" data-id="${esc(code)}">Cancel</button></div></div>`;
+  const rows=us.map(e=>{const down=grpOpenDt(e).length>0;return `<tr data-pcu="${esc(e.id)}"><td>${idTag(e)}</td><td>${esc(e.type||'—')}</td><td>${esc(label(e))}</td><td>${esc(e.serial||'—')}</td>${down?`<td colspan="2"><span class="chip bad">Shut down on site</span> Complete the failure report first: <button class="btn sm" data-act="go" data-v="demob" data-id="${esc(e.id)}">Demobilise</button></td>`:`<td><select class="pcSt" style="${ei}"><option value="Available">Back to yard</option><option value="To be assessed" selected>To be assessed</option></select></td><td><input type="date" class="pcD" value="${today()}" required style="${ei}"></td>`}</tr>`}).join('');
+  return `<div class="panel" style="padding:14px;margin:12px 0"><h2 style="font-size:22px;margin-top:0">Close project ${esc(code)}</h2><div class="hint">All ${us.length} unit${us.length===1?'':'s'} on this project will be demobilised back to the yard. Choose how each unit returns and the demobilisation date, then confirm.</div>
+  <div class="actions" style="align-items:flex-end;margin-bottom:8px"><label class="f"><span>Return all as</span><select id="pcAllSt" style="${ei}"><option value="">—</option><option value="Available">Back to yard</option><option value="To be assessed">To be assessed</option></select></label><label class="f"><span>Demobilisation date for all</span><input type="date" id="pcAllD" value="${today()}" style="${ei}"></label></div>
+  <div class="tablewrap"><table class="eqtable"><thead><tr><th>Equipment ID</th><th>Type</th><th>Make / Model</th><th>Serial no.</th><th>Return as</th><th>Date demobilised</th></tr></thead><tbody>${rows}</tbody></table></div>
+  <div class="actions" style="margin-top:10px"><button class="btn pri" data-act="projcloseok" data-id="${esc(code)}">Demobilise all &amp; close project</button><button class="btn" data-act="projcloseno" data-id="${esc(code)}">Cancel</button></div></div>`};
+async function plCloseConfirm(code){
+  const rows=[...document.querySelectorAll('tr[data-pcu]')];
+  if(unitsOn(code).some(e=>grpOpenDt(e).length))return toast('A unit is shut down on site. Complete its failure report and demobilise it first.');
+  const todo=[];
+  for(const tr of rows){const d=(tr.querySelector('.pcD')||{}).value,st=(tr.querySelector('.pcSt')||{}).value;if(!d)return toast('Enter the demobilisation date for '+tr.dataset.pcu+'.');todo.push({id:tr.dataset.pcu,d,st})}
+  let n=0;
+  for(const t of todo){const e=eq(t.id);if(!e||e.status!=='On rental')continue;
+    const was=e.project?'project '+e.project+(e.customer?' · '+e.customer:''):(e.customer||'rental');
+    await put('equipment',e.id,{...rowData(e),...blankRental,status:t.st,customer:'',project:'',dateOut:'',dueBack:'',location:e.location||'',history:hist(e,'Demobilised from '+was+' on '+fd(t.d)+' · now '+t.st,t.d)});n++}
+  const r=projRec(code);
+  if(await put('projects',r?r.id:projSlug(code),{...(r?rowData(r):{}),code:r?r.code:code,status:'Closed',closedOn:today(),events:[...((r&&r.events)||[]),{d:today(),t:'Project closed'+(n?' · '+n+' unit'+(n===1?'':'s')+' demobilised':'')}]})){F.pcl='';toast('Project '+code+' closed'+(n?' · '+n+' unit'+(n===1?'':'s')+' demobilised':''));render()}
+}
+const PL_EI='font-size:14px;padding:6px 8px;border:2px solid var(--accent);border-radius:4px;background:var(--surface);color:var(--ink);width:100%;box-sizing:border-box';
+function plNewRow(){
+  const tb=document.querySelector('.eqtable tbody');if(!tb)return;
+  const em=tb.querySelector('td.empty');if(em)em.closest('tr').remove();
+  const tr=document.createElement('tr');tr.setAttribute('data-plenew','1');
+  tr.innerHTML=`<td><input type="date" class="pleD" value="${today()}" style="${PL_EI};min-width:140px"></td><td><input class="pleK" list="plKinds" placeholder="Type" value="Note" style="${PL_EI};min-width:100px"><datalist id="plKinds"><option>Note</option><option>Delivery</option><option>Shutdown</option><option>Restart</option><option>Demobilise</option><option>Maintenance</option><option>Equipment</option><option>Project</option></datalist></td><td><input class="pleL" placeholder="Location" style="${PL_EI};min-width:120px"></td><td>—</td><td><textarea class="pleT" rows="3" placeholder="Entry" style="${PL_EI};min-width:260px"></textarea></td><td><button class="btn sm danger" data-act="plenewrm">Remove</button></td>`;
+  tb.insertBefore(tr,tb.firstChild);tr.querySelector('.pleT').focus();
+}
+async function plEditHide(code,ek){
+  const r=projRec(code);if(!r&&!ek)return;
+  const le={...((r&&r.logEdits)||{})};le[ek]={hidden:true};
+  if(await put('projects',r?r.id:projSlug(code),r?{...rowData(r),logEdits:le}:{code,status:'Open',logEdits:le})){toast('Row removed');render()}
+}
+async function plEditRestore(code){
+  const r=projRec(code);if(!r||!r.logEdits)return;
+  const le={};Object.entries(r.logEdits).forEach(([k,v])=>{if(!(v&&v.hidden))le[k]=v});
+  if(await put('projects',r.id,{...rowData(r),logEdits:le})){toast('Removed rows restored');render()}
+}
+async function plEditSave(code){
+  const r=projRec(code),evs=(r&&r.events||[]).map(e=>({...e})),le={...((r&&r.logEdits)||{})};let n=0;
+  document.querySelectorAll('tr[data-ple]').forEach(tr=>{
+    const key=tr.dataset.ple,x=PLR[key];if(!x)return;
+    const d=tr.querySelector('.pleD').value||x.d,loc=tr.querySelector('.pleL').value.trim(),t=tr.querySelector('.pleT').value.trim()||x.t;
+    if(d===x.d&&loc===(x.loc||'')&&t===x.t)return;
+    if(x.eid){const e=evs.find(v=>v.id===x.eid);if(e){e.d=d;e.loc=loc;e.t=t;n++}}
+    else if(x.ek&&x.o){if(d===x.o.d&&loc===x.o.loc&&t===x.o.t)delete le[x.ek];else le[x.ek]={d,loc,t};n++}});
+  const nr=[...document.querySelectorAll('tr[data-plenew]')];let i=0;
+  nr.forEach(tr=>{const t=tr.querySelector('.pleT').value.trim();if(!t)return;
+    evs.push({id:'pe'+Date.now()+'_'+(i++),at:today(),d:tr.querySelector('.pleD').value||today(),kind:tr.querySelector('.pleK').value.trim()||'Note',loc:tr.querySelector('.pleL').value.trim(),t});n++});
+  if(!n){F.ple='';render();return toast('No changes to save')}
+  if(await put('projects',r?r.id:projSlug(code),r?{...rowData(r),events:evs,logEdits:le}:{code,status:'Open',events:evs,logEdits:le})){F.ple='';toast(n+' log entr'+(n===1?'y':'ies')+' updated');render()}
+}
+async function plEditReset(code,ek){
+  const r=projRec(code);if(!r||!r.logEdits||!r.logEdits[ek])return;
+  const le={...r.logEdits};delete le[ek];
+  if(await put('projects',r.id,{...rowData(r),logEdits:le})){toast('Original entry restored');render()}
 }
 async function plEvDel(code,eid){
   const r=projRec(code),x=r&&(r.events||[]).find(v=>v.id===eid);if(!x)return;
@@ -3217,38 +3393,39 @@ const plDelivery=(e,h,cur)=>{const t=h.t||'',v=/(\d+\s+(?:day|week|month|year)s?
   return ['Delivery · '+grpName(e),'Delivery date: '+fd(h.d),val?'Validity period: '+val:'','Due back: '+(due||'—')].filter(Boolean).join(' · ')};
 function projDates(sel){const r=projRec(sel)||{},us=unitsOn(sel),ds=us.map(u=>u.dateOut).filter(Boolean).sort(),de=us.map(u=>u.dueBack).filter(Boolean).sort();
   return {start:r.dateOut||ds[0]||'',end:r.dueBack||de[de.length-1]||'',val:durText(r)||'',cl:projClient(sel)}}
-const PLKEEP=new Set(['Delivery','Demobilization','Shutdown on site','Restart']);
 function projLogEvents(sel){
       const k=sel.toLowerCase(),ev=[];
       const OUT=/^(Returned from rental|Demobilised|Sold to|Retired|Scrapped|Available|Level \d service|To be assessed|New\b)/;
-      S.equipment.forEach(e=>{let inP=false,from='',to='',sl='';const sdD=new Set(),rsD=new Set(),ul=String(e.rentLoc||e.location||'').trim(),uid=grpName(e);
+      S.equipment.forEach(e=>{let inP=false,from='',to='';const sdD=new Set(),rsD=new Set(),ul=String(e.rentLoc||e.location||'').trim(),uid=grpName(e);
         const hh0=syncRentalEntry(e.history||[],e),curOn=e.status==='On rental'&&(e.project||'').trim().toLowerCase()===k;
-        const LOC=()=>sl||(curOn?ul:'');let fb=-1;if(curOn)hh0.forEach((x,j)=>{if(/^(On rental to|Added to rental project)/.test(x.t||''))fb=j});
+        let fb=-1;if(curOn)hh0.forEach((x,j)=>{if(/^(On rental to|Added to rental project)/.test(x.t||''))fb=j});
         hh0.forEach((h,hi)=>{const t=grpClean(h.t||''),has=projHas(t,sel)||(!inP&&hi===fb);
           if(!inP&&has){inP=true;from=h.d||'';to=''}
-          if(inP){let kind='Equipment',txt=histShow({...h,t}),dlc='';
-            if(RENT_START.test(t))sl=(/location: (.+?)(?: ·|$)/.exec(t)||[])[1]||(curOn&&hi===fb?ul:'');
+          if(inP){let kind='Equipment',txt=histShow({...h,t});
             if(RENT_START.test(t)){kind='Delivery';txt=plDelivery(e,h,curOn&&hi===fb)}
-            else if(/^Shutdown on site/.test(t)){kind='Shutdown on site';txt='Shutdown on site · '+uid+' · '+fd(h.d)+t.slice('Shutdown on site'.length);sdD.add(h.d)}
+            else if(/^Shutdown on site/.test(t)){kind='Shutdown';txt='Shutdown of site · '+uid+' · '+fd(h.d)+t.slice('Shutdown on site'.length);sdD.add(h.d)}
             else if(/^Restart/.test(t)){kind='Restart';txt='Restart · '+uid+' · '+fd(h.d)+' · '+t;rsD.add(h.d)}
-            else if(/^(Demobilised|Returned from rental)/.test(t)){kind='Demobilization';dlc=(/from location: (.+?)(?: ·|$)/.exec(t)||[])[1]||LOC();txt='Demobilization · '+uid+' · '+fd(h.d)+(dlc?' · from '+dlc:'')}
-            ev.push({d:h.d||'',t:txt,ref:uid,loc:dlc||LOC(),grp:1,kind,src:{e:e.id,d:h.d||'',t:h.t||''}});
+            else if(/^(Demobilised|Returned from rental)/.test(t)){kind='Demobilise';txt='Demobilised · '+uid+' · '+fd(h.d)}
+            ev.push({d:h.d||'',t:txt,ref:uid,loc:ul,grp:1,kind});
             if(OUT.test(t)&&!/^On rental/.test(t)){inP=false;to=h.d||'9999'}}});
         if(from){const inRange=d=>d&&d>=from&&(!to||d<=to||inP);
-          S.tickets.filter(x=>x.equip===e.id&&inRange(x.opened)).forEach(x=>ev.push({d:x.opened,t:'Job card '+x.id+' · '+(x.type||'')+(x.level?' · '+x.level:'')+' · '+(x.desc||'')+' ('+(x.status||'')+')',ref:uid,loc:LOC(),grp:1,kind:'Maintenance'}));
+          S.tickets.filter(x=>x.equip===e.id&&inRange(x.opened)).forEach(x=>ev.push({d:x.opened,t:'Job card '+x.id+' · '+(x.type||'')+(x.level?' · '+x.level:'')+' · '+(x.desc||'')+' ('+(x.status||'')+')',ref:uid,loc:ul,grp:1,kind:'Maintenance'}));
           S.downtime.filter(x=>x.equip===e.id&&inRange(x.start)).forEach(x=>{
-            if(!sdD.has(x.start))ev.push({d:x.start,t:'Shutdown on site · '+uid+' · '+fd(x.start)+(x.reason?' — '+x.reason:'')+(x.end?'':' · still shut down'),ref:uid,loc:LOC(),grp:1,kind:'Shutdown on site'});
-            if(x.end&&!rsD.has(x.end))ev.push({d:x.end,t:'Restart · '+uid+' · '+fd(x.end)+' · restarted after the shutdown of '+fd(x.start),ref:uid,loc:LOC(),grp:1,kind:'Restart'})})}});
+            if(!sdD.has(x.start))ev.push({d:x.start,t:'Shutdown of site · '+uid+' · '+fd(x.start)+(x.reason?' — '+x.reason:'')+(x.end?'':' · still shut down'),ref:uid,loc:ul,grp:1,kind:'Shutdown'});
+            if(x.end&&!rsD.has(x.end))ev.push({d:x.end,t:'Restart · '+uid+' · '+fd(x.end)+' · restarted after the shutdown of '+fd(x.start),ref:uid,loc:ul,grp:1,kind:'Restart'})})}});
       {const pd=projDates(sel);
         if(pd.start)ev.push({d:pd.start,t:'Project '+sel+' · Start date: '+fd(pd.start)+' · End date: '+(pd.end?fd(pd.end):'—')+(pd.val?' · Validity period: '+pd.val:'')+(pd.cl?' · Client: '+pd.cl:''),ref:sel,kind:'Project'});
         else if(pd.end)ev.push({d:pd.end,t:'Project '+sel+' · End date: '+fd(pd.end)+(pd.val?' · Validity period: '+pd.val:''),ref:sel,kind:'Project'})}
       mrsForProj(sel).forEach(m=>ev.push({d:m.date||'',t:'MR '+m.no+' raised · '+(m.items||[]).length+' item'+((m.items||[]).length===1?'':'s')+' · '+(m.project||'')+' · due '+(m.due?fd(m.due):'—'),ref:m.no,loc:m.dest||'',kind:'MR',mr:m}));
-      {const rf=(projRec(sel)||{}).files||[];((projRec(sel)||{}).events||[]).forEach((x,xi)=>ev.push({d:x.d,t:x.t,ref:sel,loc:x.loc||'',kind:/^Delivery/.test(x.kind||'')?'Delivery':(x.kind||'Project'),eid:x.id,ei:xi,at:x.at,files:x.fk?String(x.fk).split(',').map(k=>rf.find(f=>f.key===k)).filter(Boolean):[]}))}
+      {const rf=(projRec(sel)||{}).files||[];((projRec(sel)||{}).events||[]).forEach(x=>ev.push({d:x.d,t:x.t,ref:sel,loc:x.loc||'',kind:x.kind||'Project',eid:x.id,at:x.at,files:x.fk?String(x.fk).split(',').map(k=>rf.find(f=>f.key===k)).filter(Boolean):[]}))}
+      {const le=(projRec(sel)||{}).logEdits||{};
+        ev.forEach(x=>{if(x.eid||x.mr)return;x.ek=[x.kind,x.d,x.ref,x.t].join('|');x.o={d:x.d,t:x.t,loc:x.loc||''};const o=le[x.ek];if(o&&!o.hidden){x.d=o.d||x.d;x.t=o.t||x.t;x.loc=o.loc!=null?o.loc:x.loc;x.edited=true}if(o&&o.hidden)x.hide=true});for(let i=ev.length-1;i>=0;i--)if(ev[i].hide)ev.splice(i,1)}
       ev.sort((a,b)=>b.d.localeCompare(a.d));
       const lf=(projRec(sel)||{}).logFrom;
       const fin=lf?ev.filter(x=>(x.at||x.d||'')>=lf):ev,seenK=new Set();
-      return fin.filter(x=>PLKEEP.has(x.kind)).filter(x=>{if(!x.grp)return true;const kk=[x.d,x.kind,x.ref].join('|');if(seenK.has(kk))return false;seenK.add(kk);return true});
+      return fin.filter(x=>{if(!x.grp)return true;const kk=[x.d,x.kind,x.ref,x.t].join('|');if(seenK.has(kk))return false;seenK.add(kk);return true});
 }
+const plProjKey=code=>{const k=String(code).toLowerCase(),p=activeProjects().find(x=>String(x.project).toLowerCase()===k);return p?p.key:'idle:'+code};
 const findProj=key=>{const p=activeProjects().find(x=>x.key===key);if(p)return p;if(String(key).startsWith('idle:')){const code=key.slice(5),r=projRec(code)||{};return {key,customer:r.customer||'',project:code,dateOut:r.dateOut||'',dueBack:r.dueBack||'',duration:r.duration||'',durUnit:r.durUnit||'',shift:r.shift||'',operator:r.operator||'',fuel:r.fuel||'',fuelQty:r.fuelQty||'',units:[]}}return null};
 const projClient=code=>{const k=String(code||'').trim().toLowerCase(),r=projRec(code);if(r&&r.customer)return r.customer;
   const u=S.equipment.find(e=>(e.project||'').trim().toLowerCase()===k&&e.customer);if(u)return u.customer;
@@ -3362,7 +3539,7 @@ window.addEventListener('message',ev=>{
   const d=ev.data;if(!d)return;
   const fw=document.getElementById('laingframe')?.contentWindow,ew=laingEng&&laingEng.contentWindow;
   if(ev.source!==fw&&ev.source!==ew)return;
-  if(d.type==='laing-certs'&&!db&&Array.isArray(d.items)&&ev.source===fw){const prevC=(S.certificates||[]).slice();S.certificates=d.items;persistLocal();fsSchedule();try{laingLog(prevC,d.items)}catch(x){}}
+  if(d.type==='laing-certs'&&AUTH.can('write')&&!db&&Array.isArray(d.items)&&ev.source===fw){const prevC=(S.certificates||[]).slice();S.certificates=d.items;persistLocal();fsSchedule();try{laingLog(prevC,d.items)}catch(x){}}
   if(d.type==='laing-pdf'&&d.buf){if(ev.source===fw)ev.source.postMessage({type:'laing-pdf-ok'},'*');else{clearTimeout(laingTimer);laingReq++;}showPdfBlob(new Blob([d.buf],{type:'application/pdf'}),d.name)}
   if(d.type==='laing-pdf-fail'){clearTimeout(laingTimer);toast('Could not build the PDF in this browser. Open Laing Certification and use Print.')}
 });
@@ -3374,15 +3551,40 @@ function viewLaing(){
   setTimeout(()=>{const f=document.getElementById('laingframe');if(f&&!f.dataset.ready){f.dataset.ready='1';f.addEventListener('load',pushLaing);f.srcdoc=new TextDecoder().decode(Uint8Array.from(atob(LAING_B64),c=>c.charCodeAt(0)))}},0);
   return `<h2>Laing Certification</h2><div class="laingwrap"><iframe id="laingframe" title="Laing Certification register"></iframe></div>`;
 }
-const FORMS=new Set(['plhist','histedit','histall','fredit','restart','laing','foform','persform','perscert','perscerts','sell','add','edit','status','demob','install','skidform','ticket','ticketnew','down','cert']);
+const FORMS=new Set(['histedit','histall','fr','fredit','restart','laing','foform','persform','perscert','perscerts','sell','add','edit','status','demob','install','skidform','ticket','ticketnew','down','cert']);
+/* Keeps the page title, tabs, counters and filters at the top of the page while the rest scrolls (the header bar is already sticky). */
+function freezeTop(){
+  const hd=document.querySelector('header.top');if(hd)document.documentElement.style.setProperty('--hdrh',hd.offsetHeight+'px');
+  const app=document.getElementById('app');if(!app)return;
+  let root=app.firstElementChild&&app.firstElementChild.classList.contains('lcv')?app.firstElementChild:app;
+  const hm=app.querySelector('.homeMain');if(hm)root=hm;
+  const keep=el=>el.matches('h2,h3.pgt,.tabs,.cnts,.filters,.hint,.fbar,.strip,.typebar,.link.back,.actions,[role="tablist"]')||(el.tagName==='DIV'&&el.firstElementChild&&el.firstElementChild.tagName==='H2');
+  const lead=[];for(const el of root.children){if(!keep(el))break;lead.push(el)}
+  if(!lead.length)return;
+  const w=document.createElement('div');w.className='freeze';root.insertBefore(w,lead[0]);lead.forEach(el=>w.appendChild(el));
+  w._lead=lead;
+  freezeFit(w);
+}
+/* freeze as much of the top block as fits in about a third of the screen; the rest scrolls normally */
+function freezeFit(w){
+  const lead=w._lead||[...w.children],lim=window.innerHeight*0.38;
+  const after=[...(w._out||[])];
+  w.classList.remove('nofreeze');
+  while(w.offsetHeight>lim&&w.children.length>1){const el=w.lastElementChild;after.unshift(el);w.parentNode.insertBefore(el,w.nextSibling)}
+  /* put back anything that now fits */
+  w._out=after;
+  while(w._out.length){const el=w._out[0];w.appendChild(el);if(w.offsetHeight>lim&&w.children.length>1){w.parentNode.insertBefore(el,w.nextSibling);break}w._out.shift()}
+  if(w.offsetHeight>lim)w.classList.add('nofreeze');
+}
+addEventListener('resize',()=>{const hd=document.querySelector('header.top');if(hd)document.documentElement.style.setProperty('--hdrh',hd.offsetHeight+'px');const w=document.querySelector('.freeze');if(w)freezeFit(w)});
 function render(){
   if(!booted||(db&&Object.keys(seen).length<COLS.length)){$('#app').innerHTML='<div class="panel"><div class="empty">Loading your records…</div></div>';return}
   const n=view.n;
-  const body={plhist:viewPlHist,home:viewHome,list:viewList,open:viewDetail,add:viewAdd,edit:viewAdd,added:viewAdded,status:viewStatus,demob:viewDemob,skids:viewSkids,skidform:viewSkidForm,install:viewInstall,tickets:viewTickets,ticket:viewTicketForm,ticketnew:viewTicketForm,due:viewDue,storage:viewStorage,down:viewDown,restart:viewRestart,fr:viewFr,fredit:viewFrEdit,histedit:viewHistEdit,histall:viewHistAll,cert:viewCert,certsdue:viewCerts,sell:viewSell,sales:viewSales,mr:viewMr,pers:viewPers,persform:viewPers,perscert:viewPers,perscerts:viewPers,fo:viewFo,foform:viewFo,laing:viewLaing,soon:()=>`<h2>${esc(view.t||'')}</h2><div class="panel"><div class="empty">This section is not built in the tracker yet.</div></div>`}[n]();
+  const body={home:viewHome,list:viewList,open:viewDetail,add:viewAdd,edit:viewAdd,added:viewAdded,status:viewStatus,demob:viewDemob,skids:viewSkids,skidform:viewSkidForm,install:viewInstall,tickets:viewTickets,ticket:viewTicketForm,ticketnew:viewTicketForm,due:viewDue,storage:viewStorage,down:viewDown,restart:viewRestart,fr:viewFr,fredit:viewFrEdit,histedit:viewHistEdit,histall:viewHistAll,cert:viewCert,certsdue:viewCerts,sell:viewSell,sales:viewSales,mr:viewMr,pers:viewPers,persform:viewPers,perscert:viewPers,perscerts:viewPers,fo:viewFo,foform:viewFo,laing:viewLaing,soon:()=>`<h2>${esc(view.t||'')}</h2><div class="panel"><div class="empty">This section is not built in the tracker yet.</div></div>`}[n]();
   $('#app').innerHTML=(['home','laing'].includes(n)||/class="lc"/.test(body))?body:'<div class="lcv">'+body+'</div>';
   const act=S.equipment.filter(e=>!gone(e)).length;
   $('#sub').textContent=act?`${act} unit${act===1?'':'s'} · ${S.skids.filter(k=>!k.retired).length} skid${S.skids.length===1?'':'s'}`:'';if(typeof SRV!=='undefined'&&SRV.on)$('#sub').textContent+=(act?' · ':'')+'Auto-save on';
-  projFlag();frImgs();tkToggle();pcRefresh();
+  projFlag();frImgs();tkToggle();pcRefresh();freezeTop();
   {const tn=$('#tnav');if(tn)tn.innerHTML=topNav(n);const il=$('#inslist');if(il)il.innerHTML=inspList().map(x=>`<option value="${esc(x)}"></option>`).join('')}
   if(noFS)document.querySelectorAll('.descta').forEach(autoDesc);
   const q=$('#q'); if(q&&F.q){q.focus();q.setSelectionRange(F.q.length,F.q.length)}
@@ -3390,8 +3592,9 @@ function render(){
   const pq=$('#pq'); if(pq&&F.pq){pq.focus();pq.setSelectionRange(F.pq.length,F.pq.length)}
   const mq=$('#mq'); if(mq&&F.mq){mq.focus();mq.setSelectionRange(F.mq.length,F.mq.length)}
   const cq=$('#cq'); if(cq&&F.cq){cq.focus();cq.setSelectionRange(F.cq.length,F.cq.length)}
+  AUTH.apply();
 }
-function go(n,o={}){if(n==='status'&&!o.dates){const ue=eq(o.id);if(ue&&isRepair(ue.status)){const oj=openJobFor(ue.id);toast('Status is locked while the unit is in service or to be assessed. Change it from the job card.');if(oj){n='ticket';o={id:oj.id}}else{n='ticketnew';o={id:ue.id}}}}if(n==='ticketnew'){const oj=openJobFor(o.id);if(oj){toast('Job card '+oj.id+' is already open for '+o.id+'. Edit or close it before opening another.');n='ticket';o={id:oj.id}}}view={n,...o};confirmDel=false;if(n==='ticket'||n==='ticketnew'){pend={load:[],docs:[]};rem=new Set()}render();window.scrollTo(0,0)}
+function go(n,o={}){if(!AUTH.allowView(n,o)){toast('Your login does not allow that page.');return}if(n==='status'&&!o.dates){const ue=eq(o.id);if(ue&&isRepair(ue.status)){const oj=openJobFor(ue.id);toast('Status is locked while the unit is in service or to be assessed. Change it from the job card.');if(oj){n='ticket';o={id:oj.id}}else{n='ticketnew';o={id:ue.id}}}}if(n==='ticketnew'){const oj=openJobFor(o.id);if(oj){toast('Job card '+oj.id+' is already open for '+o.id+'. Edit or close it before opening another.');n='ticket';o={id:oj.id}}}view={n,...o};confirmDel=false;if(n==='ticket'||n==='ticketnew'){pend={load:[],docs:[]};rem=new Set()}render();window.scrollTo(0,0)}
 
 /* ---------- events ---------- */
 const DEL_CODE='1068',DELACTS=new Set(['plevdel','plfrem','mrreopen','delete','fodel','logdel','mrdel','persdel','projdel','certrm','pdfrem','restore','fsload','fsreplace','msload','msreplace']),NOCONF=new Set(['plevdel','plfrem','mrreopen','certrm','pdfrem','restore','fsload','fsreplace','msload','msreplace']);
@@ -3404,7 +3607,8 @@ function askDelCode(msg){return new Promise(res=>{
 document.addEventListener('click',async ev=>{
   const b=ev.target.closest('[data-act]'); if(!b) return;
   const a=b.dataset.act,id=b.dataset.id;
-  if(DELACTS.has(a)&&(confirmDel||NOCONF.has(a))){if(!(await askDelCode(a==='mrreopen'?'Reopening a closed MR needs your code.':undefined))){if(!NOCONF.has(a)){confirmDel=false;render()}toast('Nothing was changed.');return}}
+  if(!AUTH.allowAct(a,b)){toast('Your login does not allow that.');return}
+  if(DELACTS.has(a)&&(confirmDel||NOCONF.has(a))&&!(AUTH.role()!=='admin'&&(a==='msload'||a==='fsload'))){if(!(await askDelCode(a==='mrreopen'?'Reopening a closed MR needs your code.':undefined))){if(!NOCONF.has(a)){confirmDel=false;render()}toast('Nothing was changed.');return}}
   if(a==='home') go('home');
   else if(a==='list'){go('list')}
   else if(a==='sales'){go('sales',{tab:'rentals'})}
@@ -3429,16 +3633,19 @@ document.addEventListener('click',async ev=>{
   else if(a==='laingpdf'){await viewLaingPdf(id)}
   else if(a==='plfrem'){await plRemoveFile(id,b.dataset.key)}
   else if(a==='pladd'){await plAddEntry(id)}
+  else if(a==='pledit'){F.ple=F.ple===id?'':id;render()}
+  else if(a==='plesave'){await plEditSave(id)}
+  else if(a==='plenew'){plNewRow()}
+  else if(a==='plenewrm'){const tr=b.closest('tr');if(tr)tr.remove()}
+  else if(a==='plehide'){await plEditHide(id,b.dataset.ek)}
+  else if(a==='plerestore'){await plEditRestore(id)}
+  else if(a==='plereset'){await plEditReset(id,b.dataset.ek)}
   else if(a==='plevdel'){await plEvDel(id,b.dataset.eid)}
-  else if(a==='plhist'){ if(!(await askDelCode('Editing the history needs your pass code.'))) return toast('Nothing was changed.'); go('plhist',{id}); }
-  else if(a==='plbk'){ go('sales',{tab:'plog'}); }
   else if(a==='plpdf'){try{showPdfBlob(projLogPdf(id),'Project-log-'+projSlug(id))}catch(e){toast('Could not create the PDF.')}}
-  else if(a==='plcnt'){F.plc=F.plc===id?'':id;render()}
-  else if(a==='plopen'){F.pl=id;F.plc='';go('sales',{tab:'plog'})}
-  else if(a==='projclose'){
-    const n=unitsOn(id).length;if(n)return toast(n+' unit'+(n>1?'s are':' is')+' still on this project. Demobilise '+(n>1?'them':'it')+' first.');
-    if(!confirmDel||F.pd!=='close'){confirmDel=true;F.pd='close';render();return}confirmDel=false;F.pd='';
-    const r=projRec(id);if(await put('projects',r?r.id:projSlug(id),{...(r?rowData(r):{}),code:r?r.code:id,status:'Closed',closedOn:today(),events:[...((r&&r.events)||[]),{d:today(),t:'Project closed'}]})){toast('Project '+id+' closed');render()}}
+  else if(a==='plopen'){F.pl=id;F.pst='';F.ple='';F.pcl='';go('sales',{tab:'plog'})}
+  else if(a==='projclose'){F.pcl=F.pcl===id?'':id;render()}
+  else if(a==='projcloseno'){F.pcl='';render()}
+  else if(a==='projcloseok'){await plCloseConfirm(id)}
   else if(a==='projdel'){
     const n=unitsOn(id).length;if(n)return toast(n+' unit'+(n>1?'s are':' is')+' still on this project. Demobilise '+(n>1?'them':'it')+' first.');
     if(!confirmDel||F.pd!=='proj'){confirmDel=true;F.pd='proj';render();return}confirmDel=false;F.pd='';
@@ -3550,6 +3757,7 @@ document.addEventListener('click',async ev=>{
   else if(a==='downnew') go('down',{eq:id});
   else if(a==='downedit') go('down',{id});
   else if(a==='restart'){ if(S.downtime.some(x=>x.id===id)) go('restart',{id}); }
+  else if(a==='frclose'){frClose=true;const fm=document.getElementById('frm');if(fm&&fm.requestSubmit){fm.requestSubmit();setTimeout(()=>{frClose=false},3000)}else{frClose=false}}
   else if(a==='recadd'){ const box=document.getElementById((b.dataset.pf||'')+'recs'); if(box){ const n=box.querySelectorAll('.recrow').length+1; box.insertAdjacentHTML('beforeend',recRow(b.dataset.pf||'',n,'')); const i=box.querySelector('.recrow:last-child input'); if(i)i.focus() } }
   else if(a==='recdel'){ const row=b.closest('.recrow'),box=row&&row.parentElement; if(row&&box){ if(box.querySelectorAll('.recrow').length<=1){ const i=row.querySelector('input'); if(i){i.value='';i.focus()} } else { row.remove(); box.querySelectorAll('.recrow').forEach((r,k)=>{ r.querySelector('.recn').textContent='#'+(k+1); r.querySelector('input').placeholder='Recommendation #'+(k+1) }) } } }
   else if(a==='pcadd'){
@@ -3614,7 +3822,7 @@ document.addEventListener('click',async ev=>{
   }
 });
 document.addEventListener('submit',async ev=>{
-  if(ev.target.getAttribute('id')!=='frm') return; ev.preventDefault(); await submit(ev.target);
+  if(ev.target.getAttribute('id')!=='frm') return; ev.preventDefault(); if(!AUTH.can('write')){toast('Your login is view-only.');return} await submit(ev.target);
 });
 async function saveMr(f,stay){
     const old=view.id?S.mrs.find(x=>x.id===view.id):null;
@@ -3636,32 +3844,6 @@ async function saveMr(f,stay){
 }
 async function submit(f){
   const n=view.n;
-  if(n==='plhist'){
-    const code=view.id,r=projRec(code),evNew=r?[...(r.events||[])]:[],byUnit={};let ch=0,evCh=false;
-    for(const row of f.querySelectorAll('.hrow')){
-      const o=PLH[+row.dataset.n];if(!o)continue;
-      const d=row.querySelector('.hd').value,t=row.querySelector('.ht').value.trim();
-      if(!d||!t) return toast('Every entry needs a date and text.');
-      if(o.src){if(d!==o.src.d||t!==String(o.src.t).trim())(byUnit[o.src.e]=byUnit[o.src.e]||[]).push({src:o.src,d,t})}
-      else if(r&&o.ei!==undefined){const x0=evNew[o.ei];if(x0&&(d!==x0.d||t!==x0.t)){evNew[o.ei]={...x0,d,t};ch++;evCh=true}}
-    }
-    for(const [uid,list] of Object.entries(byUnit)){
-      const e=eq(uid);if(!e)continue;
-      const hh=(e.history||[]).map(h=>({...h})),dtMap={},edIdx=new Set();let eqExtra={};
-      for(const it of list){
-        let i=hh.findIndex(x=>x.t===it.src.t&&x.d===it.src.d);if(i<0)i=hh.findIndex(x=>x.t===it.src.t);if(i<0)continue;
-        const r2=histLink({...e,history:hh},i,it.d,it.t,dtMap);hh[i].t=r2.t;hh[i].d=it.d;Object.assign(eqExtra,r2.eqExtra);edIdx.add(i);ch++;
-      }
-      if(eqExtra.project){const rh=projRehome(e.history||[],e.project,eqExtra.project);hh.forEach((x,j)=>{if(!edIdx.has(j)&&rh[j])x.t=rh[j].t})}
-      const hs=hh.map((x,j)=>[x,j]).sort((a,b)=>(a[0].d||'').localeCompare(b[0].d||'')||a[1]-b[1]).map(x=>x[0]);
-      if(!(await put('equipment',e.id,{...rowData(e),...eqExtra,history:hs}))) return;
-      for(const x of Object.values(dtMap))await put('downtime',x.id,rowData(x));
-      if(e.status==='On rental'&&(eqExtra.project||eqExtra.customer||eqExtra.dateOut))await projSync(e,{...e,...eqExtra});
-    }
-    if(!ch) return toast('Nothing was changed.');
-    if(evCh&&r)await put('projects',r.id,{...rowData(r),events:evNew});
-    toast(ch+' log entr'+(ch===1?'y':'ies')+' updated');go('sales',{tab:'plog'});return;
-  }
   if(n==='histall'){
     const e=eq(view.id); if(!e) return;
     const hh=(e.history||[]).map(h=>({...h})),dtMap={},edIdx=new Set();let ch=0,eqExtra={};
@@ -3728,19 +3910,31 @@ async function submit(f){
     toast('History updated'+(dt?' · failure report updated':''));go('open',{id:e.id});
     return;
   }
-  if(n==='fredit'){
+  if(n==='fredit'||n==='fr'){
     const r=S.downtime.find(x=>x.id===view.id); if(!r) return toast('Failure report not found.');
     if(frBusy) return;
     const sb=f.querySelector('button[type="submit"]'),sbT=sb&&sb.textContent,rel=()=>{frBusy=false;if(sb){sb.disabled=false;sb.textContent=sbT}};
     frBusy=true;if(sb){sb.disabled=true;sb.textContent='Saving…'}
-    const steps=[...f.querySelectorAll('input[name="ts_"]')].map(i=>i.value.trim()).filter(Boolean);
+    const closing=frClose?val(f,'cnext'):'';
+    const wc=whyCollect(f,'e'),whys=wc.whys;if(wc.err){rel();frClose=false;return toast(wc.err)}
+    if(frClose){
+      const bad=!closing?'Choose Restart on site or Demobilize back to Laing Workshop to close the report.':!val(f,'tech')?'Enter the technician assigned to repair before closing the report.':!whys.length?'Enter at least the first "Why it failed" before closing the report.':'';
+      if(bad){rel();frClose=false;return toast(bad)}
+      const sdS=(f.elements.sdStart?val(f,'sdStart'):r.start)||r.start;
+      if(closing==='restart'){const rd=val(f,'cDate')||today();if(rd>today()){rel();frClose=false;return toast('The restart date cannot be in the future.')}if(sdS&&rd<sdS){rel();frClose=false;return toast('The restart date is before the shutdown date ('+fd(sdS)+').')}}
+      else{const yd=val(f,'cyDate');if(!yd){rel();frClose=false;return toast('Enter the demobilisation date.')}if(sdS&&yd<sdS){rel();frClose=false;return toast('The demobilisation date is before the shutdown date ('+fd(sdS)+').')}}
+    }
     const recs=[...f.querySelectorAll('input[name="erec_"]')].map(i=>i.value.trim()).filter(Boolean);
     const rm=new Set([...f.querySelectorAll('input[name="rmph"]:checked')].map(i=>i.value));
-    const keep=(r.photos||[]).filter(p=>!rm.has(p.key)),inp=f.querySelector('input[name="ephotos"]'),files=inp&&inp.files?[...inp.files]:[];
+    const keep=(r.photos||[]).filter(p=>!rm.has(p.key)),inp=f.querySelector('input[name="ephotos"]'),files=[...(inp&&inp.files?[...inp.files]:[]),...wc.files];
     if(files.length)toast('Saving '+files.length+' picture'+(files.length===1?'':'s')+'…');
     let photos;try{photos=await frStorePhotos(r.id,files,keep)}catch(x){rel();return toast(x.message||'Could not store the pictures.')}
-    const ok=await put('downtime',r.id,{...rowData(r),failureReason:val(f,'cause'),failureParts:val(f,'parts'),corrective:val(f,'fix'),techAssigned:val(f,'tech'),troubleshooting:steps,recommendations:recs,recommendation:recsJoin(recs),photos});
-    if(ok){for(const p of (r.photos||[])){if(rm.has(p.key))IDB.del(p.key).catch(()=>{})}frBusy=false;toast('Failure report updated');go('fr',{id:r.id,from:view.from||''})}else rel();
+    const shut={};if(f.elements.sdStart){shut.start=val(f,'sdStart')||r.start;shut.hoursAt=val(f,'sdHrs');shut.reportedBy=val(f,'sdBy');shut.note=val(f,'sdNote')}
+    if(shut.start&&shut.start>today()){rel();frClose=false;return toast('The shutdown date cannot be in the future.')}
+    if(shut.start&&r.end&&shut.start>r.end){rel();frClose=false;return toast('The shutdown date is after the restart date ('+fd(r.end)+').')}
+    const ok=await put('downtime',r.id,{...rowData(r),...shut,failureReason:recsJoin(whys),whys,techAssigned:val(f,'tech'),recommendations:recs,recommendation:recsJoin(recs),photos});
+    if(ok&&closing){try{await frHistSave(S.downtime.find(q=>q.id===r.id)||r,whys,val(f,'tech'),r.failureParts||'',recs,photos.length)}catch(er){}const done=await frRelease(S.downtime.find(q=>q.id===r.id)||r,f,whys,closing);frClose=false;if(done){frBusy=false;go('fr',{id:r.id,from:view.from||''});return}}
+    if(ok){for(const p of (r.photos||[])){if(rm.has(p.key))IDB.del(p.key).catch(()=>{})}try{await frHistSave(S.downtime.find(q=>q.id===r.id)||r,whys,val(f,'tech'),r.failureParts||'',recs,photos.length)}catch(er){}frBusy=false;toast('Failure report saved · added to the equipment and project history');go('fr',{id:r.id,from:view.from||''})}else rel();
     return;
   }
   if(n==='add'){
@@ -3762,7 +3956,7 @@ async function submit(f){
     }
     const st='Available',sg='';
     const d={type:val(f,'type'),make:val(f,'make'),model:val(f,'model'),serial:val(f,'serial'),location:val(f,'location'),status:st,customer:'',dateOut:'',dueBack:'',repairNote:'',skid:sg,skidDate:sg?today():'',rate:+val(f,'rate')||0,notes:val(f,'notes'),project:'',hasEngine:isCcu?'':val(f,'hasEngine'),backendType:isCcu?'':val(f,'backendType'),engSerial:isCcu||val(f,'hasEngine')==='No'?'':val(f,'engSerial'),backSerial:!isCcu&&val(f,'backendType')?val(f,'backSerial'):'',engInt:isCcu||val(f,'hasEngine')==='No'?'':val(f,'engInt'),backendMonths:!isCcu&&val(f,'backendType')?val(f,'backendMonths'):'',lastBackend:!isCcu&&val(f,'backendType')?val(f,'lastBackend'):'',hours:isCcu?'':val(f,'hours'),lastEngHrs:isCcu||val(f,'hasEngine')==='No'?'':val(f,'lastEngHrs'),parts:collectParts(f),lastService:val(f,'type')==='Fuel Tanks'?val(f,'lastService'):'',svcMonths:val(f,'type')==='Fuel Tanks'?val(f,'svcMonths'):'',certs,history:[{d:today(),t:'Added to the tracker'+(certs.length?' with '+certs.length+' certificate'+(certs.length>1?'s':''):'')}]};
-    if(st==='On rental'){Object.assign(d,rentalData(f));d.rentLoc=val(f,'rentLoc');d.customer=val(f,'customer');d.project=val(f,'project');d.dateOut=val(f,'dateOut');d.dueBack=val(f,'dueBack');d.history.push({d:d.dateOut||today(),t:'On rental to '+(d.customer||'customer')+(d.project?' · '+d.project:'')+(d.dateOut?' · start date: '+fd(d.dateOut):'')+(d.rentLoc?' · location: '+d.rentLoc:'')+(d.hours!==''&&d.hours!=null&&d.hours!==undefined?' · run hrs at start: '+d.hours:'')})}
+    if(st==='On rental'){Object.assign(d,rentalData(f));d.rentLoc=val(f,'rentLoc');d.customer=val(f,'customer');d.project=val(f,'project');d.dateOut=val(f,'dateOut');d.dueBack=val(f,'dueBack');d.history.push({d:d.dateOut||today(),t:'On rental to '+(d.customer||'customer')+(d.project?' · '+d.project:'')+(d.dateOut?' · start date: '+fd(d.dateOut):'')+(d.hours!==''&&d.hours!=null&&d.hours!==undefined?' · run hrs at start: '+d.hours:'')})}
     if(isRepair(st)){d.repairNote=val(f,'issue');d.history.push({d:today(),t:st+(d.repairNote?': '+d.repairNote:'')})}
     if(d.lastBackend) d.history.push({d:today(),t:'Last backend service recorded: '+fd(d.lastBackend)});
     if(sg) d.history.push({d:val(f,'skidDate')||today(),t:'Installed in '+sg});
@@ -3818,18 +4012,15 @@ async function submit(f){
     if(!customer) return toast('Enter the client name.');
     if(dueBack&&dateOut&&dueBack<dateOut) return toast('Due date is before the date out.');
     const rm=[...f.querySelectorAll('input[name=rm]:checked')].map(x=>x.value),add=[...f.querySelectorAll('input[name=u]:checked')].map(x=>x.value);
-    const noRmLoc=p.units.filter(e=>rm.includes(e.id)&&!val(f,'rmLoc_'+e.id));
-    if(noRmLoc.length) return toast('Enter the location '+noRmLoc.map(e=>e.id).join(', ')+' '+(noRmLoc.length===1?'is':'are')+' removed from.');
-    if(add.length&&!val(f,'addLoc')) return toast('Enter the location the added equipment is delivered to.');
     const downRm=p.units.filter(e=>rm.includes(e.id)&&isDown(e));
     if(downRm.length) return toast(downRm.map(e=>e.id).join(', ')+' '+(downRm.length===1?'is':'are')+' shut down on site. Complete the failure report first: use Demobilise on the unit page.');
     for(const e of p.units){
       if(rm.includes(e.id)){
-        await put('equipment',e.id,{...rowData(e),...blankRental,status:'Available',customer:'',project:'',dateOut:'',dueBack:'',history:hist(e,'Returned from rental project '+(e.project||e.customer||'')+(e.project&&e.customer?' · '+e.customer:'')+' · from location: '+val(f,'rmLoc_'+e.id))});
+        await put('equipment',e.id,{...rowData(e),...blankRental,status:'Available',customer:'',project:'',dateOut:'',dueBack:'',history:hist(e,'Returned from rental project '+(e.project||e.customer||'')+(e.project&&e.customer?' · '+e.customer:''))});
         for(const x of S.downtime.filter(x=>x.equip===e.id&&!x.end))await put('downtime',x.id,{...rowData(x),end:today()});
       } else await put('equipment',e.id,{...rowData(e),...blankRental,status:'On rental',customer,project,...rentalData(f),rentLoc:e.rentLoc||'',duration:e.duration||val(f,'dur'),durUnit:e.durUnit||val(f,'durUnit'),dateOut:e.dateOut||dateOut,dueBack:e.dueBack||dueBack,history:hist(e,'Rental project updated: '+customer+(project?' · '+project:'')+(dueBack?' (project valid until '+fd(dueBack)+')':''))});
     }
-    for(const id of add){const e=eq(id);if(!e||e.status!=='Available')continue;await put('equipment',id,{...rowData(e),...blankRental,status:'On rental',customer,project,dateOut,dueBack,repairNote:'',...rentalData(f),rentLoc:val(f,'addLoc'),history:hist(e,'Added to rental project: '+customer+(project?' · '+project:'')+(dateOut?' · start date: '+fd(dateOut):'')+' · location: '+val(f,'addLoc')+(e.hours!==''&&e.hours!=null?' · run hrs at start: '+e.hours:''),dateOut||undefined)})}
+    for(const id of add){const e=eq(id);if(!e||e.status!=='Available')continue;await put('equipment',id,{...rowData(e),...blankRental,status:'On rental',customer,project,dateOut,dueBack,repairNote:'',...rentalData(f),history:hist(e,'Added to rental project: '+customer+(project?' · '+project:'')+(dateOut?' · start date: '+fd(dateOut):'')+(e.hours!==''&&e.hours!=null?' · run hrs at start: '+e.hours:''),dateOut||undefined)})}
     {const r=projRec(p.project||project);if(r)await put('projects',r.id,{...rowData(r),customer,dateOut,dueBack,...rentalData(f)})}
     toast('Rental project saved');F.sp='';go('sales',{tab:'rentals'});
   }
@@ -3879,17 +4070,17 @@ async function submit(f){
     const e=eq(view.id);if(!e||e.status!=='On rental')return toast('Only a unit that is on rental can be demobilised.');
     const dt=val(f,'dmDate'),st=val(f,'dmStatus'),loc=val(f,'dmLoc'),hrs=val(f,'dmHrs'),note=val(f,'dmNote');
     if(!dt)return toast('Enter the demobilisation date.');
-    const fromLoc=val(f,'dmFrom');if(!fromLoc)return toast('Enter the location the equipment is removed from.');
     const openDt=grpOpenDt(e),fr=openDt.length?frRead(f,'d'):null;
     if(fr&&fr.err) return toast(fr.err);
     const phMap={};try{for(const x of openDt)phMap[x.id]=await frStorePhotos(x.id,fr.files,x.photos)}catch(x){return toast(x.message||'Could not store the pictures.')}
     const was=e.project?'project '+e.project+(e.customer?' · '+e.customer:''):(e.customer||'rental');
-    await put('equipment',e.id,{...rowData(e),...blankRental,status:st,customer:'',project:'',dateOut:'',dueBack:'',location:loc||e.location||'',hours:hrs||e.hours||'',history:hist(e,'Demobilised from '+was+' on '+fd(dt)+' · from location: '+fromLoc+' · now '+st+(hrs?' · '+hrs+' run hrs':'')+(note?' — '+note:''),dt)});
+    await put('equipment',e.id,{...rowData(e),...blankRental,status:st,customer:'',project:'',dateOut:'',dueBack:'',location:loc||e.location||'',hours:hrs||e.hours||'',history:hist(e,'Demobilised from '+was+' on '+fd(dt)+' · now '+st+(hrs?' · '+hrs+' run hrs':'')+(note?' — '+note:''),dt)});
     for(const x of openDt)await put('downtime',x.id,{...rowData(x),end:dt>=x.start?dt:x.start,...frFields(fr),photos:phMap[x.id],frNo:x.frNo||nextFr(),releasedBy:'demob',outcome:'yard',statusAfter:st});
     toast(e.id+' demobilised'+(openDt.length?' · failure report completed':''));go('open',{id:e.id});
   }
   else if(n==='status'){
     const e=eq(view.id),st=val(f,'status');
+    if(e&&e.status==='On rental'&&st==='Demobilise'){view.n='demob';view.id=e.id;return submit(f)}
     if(e&&isRepair(e.status)) return toast('Status is locked while the unit is in service or to be assessed. Change it from the job card.');
     if(st==='Sold'){
       if(!val(f,'buyer')) return toast('Enter who it was sold to.');
@@ -3901,16 +4092,17 @@ async function submit(f){
     if(st==='Shutdown on site'){
       if(e.status!=='On rental') return toast('Only a unit that is on rental can be shut down on site.');
       if(isDown(e)) return toast('This unit is already shut down on site.');
-      const sdt=val(f,'shutDate');if(!sdt) return toast('Enter the date of shutdown.');
-      if(e.dateOut&&sdt<e.dateOut) return toast('The shutdown date cannot be before the delivery date ('+fd(e.dateOut)+').');
       const hrs=val(f,'runhrs'),fail=val(f,'fail'),rpt=val(f,'rptby'),prev=e.hours;
       if(hrs===''||isNaN(Number(hrs))||Number(hrs)<0) return toast('Enter the current run hours.');
       if(prev!==''&&prev!=null&&!isNaN(Number(prev))&&Number(hrs)<Number(prev)) return toast('Run hours cannot be lower than the last recorded '+prev+' hrs. Check the meter reading.');
       if(!fail) return toast('Enter a brief description of the failure.');
       if(!rpt) return toast('Enter who reported the failure.');
+      const sd=val(f,'shutDate')||today();
+      if(sd>today()) return toast('The shutdown date cannot be in the future.');
+      if(e.dateOut&&sd<e.dateOut) return toast('The shutdown date is before the rental start date ('+fd(e.dateOut)+').');
       const note=val(f,'note');
-      if(await put('downtime',nextDid(),{equip:e.id,customer:e.customer||'',project:e.project||'',start:sdt,end:'',reason:'Equipment fault',party:'',billable:'',hoursAt:hrs,reportedBy:rpt,note:fail,frNo:nextFr()})){
-        await put('equipment',e.id,{...rowData(e),hours:hrs,history:hist(e,'Shutdown on site — '+fail+' (reported by '+rpt+' · '+hrs+' run hrs)'+(note?' — '+note:''),sdt)});await grpNote(e,'Shutdown on site — '+fail+' (reported by '+rpt+' · '+hrs+' run hrs)'+(note?' — '+note:''),sdt);toast('Shutdown on site logged');go('open',{id:e.id})}
+      if(await put('downtime',nextDid(),{equip:e.id,customer:e.customer||'',project:e.project||'',start:sd,end:'',reason:'Equipment fault',party:'',billable:'',hoursAt:hrs,reportedBy:rpt,note:fail,frNo:nextFr()})){
+        await put('equipment',e.id,{...rowData(e),hours:hrs,history:hist(e,'Shutdown on site — '+fail+' (reported by '+rpt+' · '+hrs+' run hrs)'+(note?' — '+note:''),sd)});await grpNote(e,'Shutdown on site — '+fail+' (reported by '+rpt+' · '+hrs+' run hrs)'+(note?' — '+note:''),sd);toast('Shutdown on site logged');go('open',{id:e.id})}
       return;
     }
     const openDt=grpOpenDt(e),fr=(openDt.length&&st!=='On rental')?frRead(f,'s'):null;
@@ -3922,11 +4114,10 @@ async function submit(f){
     if(st==='On rental'){
       d.customer=val(f,'customer');d.dateOut=val(f,'dateOut');d.dueBack=val(f,'dueBack');d.project=val(f,'project');Object.assign(d,rentalData(f));d.rentLoc=val(f,'rentLoc');
       if(!d.project||d.project==='__new__') return toast('Select an open project code, or choose New project.');
-      if(!d.rentLoc&&e.status!=='On rental') return toast('Enter the location the equipment is delivered to.');
       if(projClosed(d.project)) return toast('That project is closed. Pick an open project code.');
       if(!d.dueBack) return toast('Enter the validity period or the demobilisation date for this equipment.');
       if(d.dateOut&&d.dueBack<d.dateOut) return toast('The demobilisation date is before the delivery date.');
-      line='On rental to '+(d.customer||'project')+(d.project?' · '+d.project:'')+(durText(d)?' · '+durText(d):'')+(d.dueBack?' (due '+fd(d.dueBack)+')':'')+(d.dateOut?' · start date: '+fd(d.dateOut):'')+(d.rentLoc?' · location: '+d.rentLoc:'')+(e.hours!==''&&e.hours!=null?' · run hrs at start: '+e.hours:'');
+      line='On rental to '+(d.customer||'project')+(d.project?' · '+d.project:'')+(durText(d)?' · '+durText(d):'')+(d.dueBack?' (due '+fd(d.dueBack)+')':'')+(d.dateOut?' · start date: '+fd(d.dateOut):'')+(e.hours!==''&&e.hours!=null?' · run hrs at start: '+e.hours:'');
     }
     if(isRepair(st)){d.repairNote=val(f,'issue');line=st+(d.repairNote?': '+d.repairNote:'')}
     if((st==='Scrapped')&&e.skid){d.skid='';d.skidDate='';line+=' (removed from '+e.skid+')'}
@@ -3951,20 +4142,20 @@ async function submit(f){
     const dt=val(f,'ryDate')||today(),stY=val(f,'ryStatus')||'To be assessed',loc=val(f,'ryLoc');
     const rdate=val(f,'rDate')||today();
     if(next==='restart'){if(rdate>today()) return toast('The restart date cannot be in the future.');if(r.start&&rdate<r.start) return toast('The restart date is before the shutdown date ('+fd(r.start)+').')}
-    if(next==='yard'){if(!dt) return toast('Enter the demobilisation date.');if(!val(f,'ryFrom')) return toast('Enter the location the equipment is removed from.');if(r.start&&dt<r.start) return toast('The demobilisation date is before the shutdown date ('+fd(r.start)+').')}
-    const cause=fr.failureReason,fix=fr.corrective,tech=fr.techAssigned,frNo=r.frNo||nextFr();
+    if(next==='yard'){if(!dt) return toast('Enter the demobilisation date.');if(r.start&&dt<r.start) return toast('The demobilisation date is before the shutdown date ('+fd(r.start)+').')}
+    const cause=fr.whys[fr.whys.length-1]||'',tech=fr.techAssigned,frNo=r.frNo||nextFr();
     let photos;try{photos=await frStorePhotos(r.id,fr.files,r.photos)}catch(x){return toast(x.message||'Could not store the pictures.')}
-    const detail=' — cause: '+cause+' · parts: '+fr.failureParts+' · corrective: '+fix+' · technician: '+tech+' · recommendations: '+fr.recommendations.map((q,i)=>'#'+(i+1)+' '+q).join(' ')+(photos.length?' · '+photos.length+' picture'+(photos.length===1?'':'s'):'')+' · report '+frNo;
+    const detail=' — cause: '+cause+' · technician: '+tech+' · recommendations: '+fr.recommendations.map((q,i)=>'#'+(i+1)+' '+q).join(' ')+(photos.length?' · '+photos.length+' picture'+(photos.length===1?'':'s'):'')+' · report '+frNo;
     if(next==='restart'){
       if(await put('downtime',r.id,{...rowData(r),end:rdate,...frFields(fr),photos,frNo,releasedBy:'restart',outcome:'restart',statusAfter:'On rental'})){
-        if(e){await put('equipment',e.id,{...rowData(e),status:'On rental',history:hist(e,'Restarted on site on '+fd(rdate)+' — corrective: '+fix+' · report '+frNo,rdate)});await grpNote(e,'Restarted on site on '+fd(rdate)+' — corrective: '+fix+' · report '+frNo,rdate)}
+        if(e){await put('equipment',e.id,{...rowData(e),status:'On rental',history:hist(e,'Restarted on site on '+fd(rdate)+' — cause: '+cause+' · report '+frNo,rdate)});await grpNote(e,'Restarted on site on '+fd(rdate)+' — cause: '+cause+' · report '+frNo,rdate)}
         toast('Restarted on site · failure report '+frNo+' completed');go('fr',{id:r.id,from:''});
       }
     } else {
       if(!e||e.status!=='On rental') return toast('Only a unit that is on rental can be demobilised.');
       const was=e.project?'project '+e.project+(e.customer?' · '+e.customer:''):(e.customer||'rental');
       if(await put('downtime',r.id,{...rowData(r),end:dt>=r.start?dt:r.start,...Object.fromEntries(Object.entries(frFields(fr)).filter(([k,v])=>Array.isArray(v)?v.length:v)),photos,frNo,releasedBy:'demob',outcome:'yard',statusAfter:stY})){
-        await put('equipment',e.id,{...rowData(e),...blankRental,status:stY,customer:'',project:'',dateOut:'',dueBack:'',location:loc||e.location||'',history:hist(e,'Demobilised from '+was+' on '+fd(dt)+' · from location: '+val(f,'ryFrom')+' · now '+stY+' · report '+frNo,dt)});
+        await put('equipment',e.id,{...rowData(e),...blankRental,status:stY,customer:'',project:'',dateOut:'',dueBack:'',location:loc||e.location||'',history:hist(e,'Demobilised from '+was+' on '+fd(dt)+' · now '+stY+' · report '+frNo,dt)});
         toast(e.id+' demobilised to the yard · failure report '+frNo+' completed');go('fr',{id:r.id,from:''});
       }
     }
@@ -4143,7 +4334,10 @@ document.addEventListener('change',ev=>{
   else if(t.name==='m_pri'||t.name==='m_dreq')mrSync()
   else if(t.name==='m_link'||t.name==='m_ticket'||t.name==='m_equip'||t.name==='m_projcode'||t.name==='m_newjob')mrLink()
   else if(t.id==='spSel'){F.sp=t.value;render()}
-  else if(t.id==='plSel'){F.pl=t.value;F.plc='';render()}
+  else if(t.id==='plSel'){F.pl=t.value;F.ple='';F.pcl='';render()}
+  else if(t.id==='pcAllSt'){if(t.value)document.querySelectorAll('.pcSt').forEach(x=>x.value=t.value)}
+  else if(t.id==='pcAllD'){if(t.value)document.querySelectorAll('.pcD').forEach(x=>x.value=t.value)}
+  else if(t.id==='plSt'){F.pst=t.value;F.pl='';F.ple='';F.pcl='';render()}
   else if(t.id==='dueType'){F.dt=t.value;render()}
   else if(t.id==='duePart'){F.dp=t.value;render()}
   else if(t.id==='seltype')pickFilter()
@@ -4160,7 +4354,9 @@ document.addEventListener('change',ev=>{
   else if(t.id==='plAdd'){const c=t.dataset.code,fl=[...t.files];t.value='';plAddFiles(c,fl)}
   else if(t.id==='frAdd'){frAddNow(t)}
   else if(/^[rdse]photos$/.test(t.id)){frPrev(t)}
+  else if(/whyph\d$/.test(t.name||'')){const sp=t.closest('.whyrow')&&t.closest('.whyrow').querySelector('.whyfn');if(sp)sp.textContent=t.files.length?'✓ '+(t.files.length===1?t.files[0].name:t.files.length+' pictures'):''}
   else if(t.id==='component'||t.id==='backAction'||t.id==='closed'||t.id==='opened'||t.id==='backDate'||t.id==='hours'){tkToggle()}
+  else if(t.name==='cnext'){const y=document.getElementById('c-yard'),rd=document.getElementById('c-restdate');if(y)y.hidden=t.value!=='yard';if(rd)rd.hidden=t.value==='yard'}
   else if(t.name==='rnext'){const af=document.getElementById('r-after');if(af)af.hidden=false;{const rp=document.getElementById('r-repair'),yd=t.value==='yard';if(rp){rp.hidden=yd;rp.querySelectorAll('[required],[data-wasreq]').forEach(i=>{if(yd){i.dataset.wasreq='1';i.required=false}else if(i.dataset.wasreq)i.required=true})}}const y=document.getElementById('r-yard');if(y)y.hidden=t.value!=='yard';const rd=document.getElementById('r-restdate');if(rd)rd.hidden=t.value==='yard'}
   else if(t.id==='xlmf'){const file=t.files[0];t.value='';if(file)xlImportFile(file)}
   else if(t.id==='rf'){
@@ -4174,7 +4370,7 @@ document.addEventListener('change',ev=>{
   else if(t.id==='status'){
     const st=t.value;
     const r=document.getElementById('g-rental'),p=document.getElementById('g-repair');
-    if(r) r.hidden=st!=='On rental'; if(p) p.hidden=!isRepair(st); {const sh=document.getElementById('g-shut');if(sh)sh.hidden=st!=='Shutdown on site'} {const sl=document.getElementById('g-sell');if(sl)sl.hidden=st!=='Sold'} projFlag();
+    if(r) r.hidden=st!=='On rental'; if(p) p.hidden=!isRepair(st); {const sh=document.getElementById('g-shut');if(sh)sh.hidden=st!=='Shutdown on site'} {const dm=document.getElementById('g-demob');if(dm)dm.hidden=st!=='Demobilise'} {const sl=document.getElementById('g-sell');if(sl)sl.hidden=st!=='Sold'} projFlag();
   }
 });
 document.addEventListener('input',ev=>{if(ev.target.name==='m_projcode'||ev.target.name==='m_newjob')mrLink();if((ev.target.id||'').startsWith('os_'))ev.target.dataset.auto='';if(ev.target.id==='os_max'){const m=+ev.target.value,w=document.getElementById('os_vrpm');if(w&&m)w.value=Math.round(m*1.1)}if(ev.target.id==='fo_nid')ev.target.dataset.touched='1';if(/^fo_(issued|val|nid)$/.test(ev.target.id||'')){osMirror();if(ev.target.id==='fo_nid')return;const g=n=>document.getElementById(n),x=certExpiry(g('fo_issued').value,g('fo_val').value,g('fo_unit').value);g('fo_x').textContent=x?'Expires on '+fd(x):'Expiry date is worked out from the issue date and validity period.'}if(ev.target.name==='m_dreq')mrSync();if(ev.target.name==='m_newjob')mrLink();if(ev.target.id==='id'&&view.n==='add')ev.target.dataset.touched='1';if(ev.target.id==='dur')autoDue();if(['hours','closed','opened'].includes(ev.target.id))tkToggle();if(/^(ci|cv)_\d+$/.test(ev.target.id))certPreview(ev.target.id.slice(3));if(ev.target.id==='backendMonths')bkHint()});
@@ -4483,6 +4679,7 @@ const fsHash=t=>{let h=5381;for(let i=0;i<t.length;i++)h=((h<<5)+h+t.charCodeAt(
 const fsFileName=k=>String(k).replace(/[^A-Za-z0-9_.\-]+/g,'_').slice(0,80)+'-'+fsHash(String(k))+'.pdf';
 const fsErr=e=>!e?'':e.name==='SecurityError'?'This window blocks folder access. Download the file and open it directly in Chrome or Edge.':e.name==='NotAllowedError'?'Permission to the folder was not granted.':e.name==='NotFoundError'?'The folder or file could not be found.':(e.message||'Could not use the folder.');
 async function fsWrite(dir,name,data){
+  if(!AUTH.can('write'))return;
   const fh=await dir.getFileHandle(name,{create:true}),w=await fh.createWritable();
   try{await w.write(data);await w.close()}catch(e){try{await w.abort()}catch(x){}throw e}
 }
@@ -4841,7 +5038,6 @@ function viewStorage(){
       ${FS.ok&&!FS.pending&&!FS.newer?'<button class="btn" data-act="fssave">Save now</button><button class="btn" data-act="cleanfiles">Clean up unused files</button>':''}
       ${FS.dir?'<button class="btn danger" data-act="fsdisc">Disconnect</button>':''}
     </div></div>`:''}
-  ${jclPanel()}
   ${xlPanel()}
   ${msPanel()}
   <h2 style="font-size:24px">Set up (OneDrive folder on a computer)</h2>
@@ -5010,7 +5206,7 @@ async function xlRun(opt){
   try{await xlPull(!!opt.force);await xlPush(!!opt.push)}
   catch(e){XL.err=fsErr(e)||'Could not sync with the Excel workbook.'}
   XL.busy=false;xlUi()}
-function xlSync(opt){const run=()=>xlRun(opt||{});XL.q=(XL.q||Promise.resolve()).then(run,run);return XL.q}
+function xlSync(opt){if(!AUTH.can('write'))return Promise.resolve();const run=()=>xlRun(opt||{});XL.q=(XL.q||Promise.resolve()).then(run,run);return XL.q}
 function xlUi(){const k=[XL.lock,XL.err,XL.pulled,XL.pushed].join('|');if(k===XL.ui)return;XL.ui=k;if((view.n==='storage'||view.n==='home')&&!FORMS.has(view.n))render()}
 async function xlLoadBase(){try{const b=await META.get('xlBase');if(b&&b.snap){XL.base=b.snap;XL.mod=b.mod||0;XL.size=b.size||0;XL.fmt=true}}catch(e){}}
 function xlReset(){XL.base=null;XL.mod=0;XL.size=0;XL.fmt=false;XL.lock=false;XL.err='';XL.pulled='';XL.pushed='';XL.fail=0;try{META.del('xlBase')}catch(e){}}
@@ -5097,6 +5293,7 @@ async function msCheck(){
   MS.chk=Date.now();
 }
 async function msSaveNow(){
+  if(!AUTH.can('write'))return false;
   if(!MS.ok||MS.newer)return false;
   if(MS.busy){MS.again=true;return false}
   MS.busy=true;MS.err='';let good=false;
